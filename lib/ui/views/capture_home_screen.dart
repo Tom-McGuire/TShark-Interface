@@ -68,14 +68,14 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
         titleSpacing: 20,
         title: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(7),
-              decoration: BoxDecoration(
-                color: AppTheme.accentCyan.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppTheme.accentCyan.withValues(alpha: 0.3)),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/images/app_logo.png',
+                width: 34,
+                height: 34,
+                fit: BoxFit.cover,
               ),
-              child: const Icon(Icons.waves, color: AppTheme.accentCyan, size: 20),
             ),
             const SizedBox(width: 12),
             const Expanded(
