@@ -20,9 +20,18 @@ class CommandPreviewCard extends StatefulWidget {
 
 class _CommandPreviewCardState extends State<CommandPreviewCard> {
   bool _copied = false;
+  bool _usePowerShell = true;
+
+  String get _displayCommand {
+    final raw = widget.commandLine.trim();
+    if (_usePowerShell && raw.startsWith('"')) {
+      return '& $raw';
+    }
+    return raw;
+  }
 
   void _copy() async {
-    await SystemService.copyToClipboard(widget.commandLine);
+    await SystemService.copyToClipboard(_displayCommand);
     if (!mounted) return;
     setState(() => _copied = true);
     Future.delayed(const Duration(seconds: 2), () {
@@ -84,7 +93,71 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
                     ),
                   ],
                 ),
-                const SizedBox(width: 8),
+              ],
+            ),
+          ),
+          // Sub-bar for Shell Format Selector and Copy Action
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: const BoxDecoration(
+              color: Color(0xFF121720),
+              border: Border(bottom: BorderSide(color: AppTheme.borderColor)),
+            ),
+            child: Row(
+              children: [
+                // Shell Format Toggle
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F141C),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppTheme.borderColor),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      InkWell(
+                        onTap: () => setState(() => _usePowerShell = true),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: _usePowerShell ? AppTheme.accentCyan.withValues(alpha: 0.2) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'PowerShell',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: _usePowerShell ? FontWeight.bold : FontWeight.normal,
+                              color: _usePowerShell ? AppTheme.accentCyan : Colors.white60,
+                            ),
+                          ),
+                        ),
+                      ),
+                      InkWell(
+                        onTap: () => setState(() => _usePowerShell = false),
+                        borderRadius: BorderRadius.circular(4),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: !_usePowerShell ? AppTheme.accentCyan.withValues(alpha: 0.2) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'CMD / Bash',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: !_usePowerShell ? FontWeight.bold : FontWeight.normal,
+                              color: !_usePowerShell ? AppTheme.accentCyan : Colors.white60,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const Spacer(),
                 // Copy Button
                 OutlinedButton.icon(
                   onPressed: _copy,
@@ -115,7 +188,7 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
           Padding(
             padding: const EdgeInsets.all(12),
             child: SelectableText(
-              widget.commandLine,
+              _displayCommand,
               style: const TextStyle(
                 fontFamily: 'Consolas',
                 fontSize: 12.5,

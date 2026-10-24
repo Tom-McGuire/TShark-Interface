@@ -1,5 +1,7 @@
-import 'dart:io';
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../models/active_capture_session.dart';
@@ -11,6 +13,7 @@ class CaptureStorageService {
   CaptureStorageService({this.baseDirectory});
 
   final Directory? baseDirectory;
+  Future<void> _prefLock = Future.value();
 
   Future<Directory> _getStorageDir() async {
     if (baseDirectory != null) {
@@ -26,7 +29,8 @@ class CaptureStorageService {
         appDir.createSync(recursive: true);
       }
       return appDir;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('Error getting app support directory: $e\n$st');
       final fallback = Directory('./.tshark_interface');
       if (!fallback.existsSync()) {
         fallback.createSync(recursive: true);
@@ -40,10 +44,46 @@ class CaptureStorageService {
     return File(p.join(dir.path, fileName));
   }
 
+  /// Atomically writes JSON content via a temporary file to prevent corruption on crash or abrupt reboot.
+  Future<void> _safeWriteJson(File file, dynamic data) async {
+    final tempFile = File('${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp');
+    final jsonStr = jsonEncode(data);
+    await tempFile.writeAsString(jsonStr, flush: true);
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+      await tempFile.rename(file.path);
+    } catch (e, st) {
+      debugPrint('Atomic rename failed ($e), falling back to direct write\n$st');
+      await file.writeAsString(jsonStr, flush: true);
+      if (await tempFile.exists()) {
+        try {
+          await tempFile.delete();
+        } catch (_) {}
+      }
+    }
+  }
+
+  /// Serializes preference read/write operations to prevent race conditions.
+  Future<T> _serializePrefOp<T>(Future<T> Function() op) {
+    final completer = Completer<T>();
+    _prefLock = _prefLock.then((_) async {
+      try {
+        final result = await op();
+        completer.complete(result);
+      } catch (e, st) {
+        debugPrint('Preference operation error: $e\n$st');
+        completer.completeError(e, st);
+      }
+    });
+    return completer.future;
+  }
+
   // Active session
   Future<void> saveActiveSession(ActiveCaptureSession session) async {
     final file = await _getFile('active_session.json');
-    await file.writeAsString(jsonEncode(session.toJson()), flush: true);
+    await _safeWriteJson(file, session.toJson());
   }
 
   Future<ActiveCaptureSession?> loadActiveSession() async {
@@ -56,7 +96,9 @@ class CaptureStorageService {
           return ActiveCaptureSession.fromJson(data);
         }
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Failed to load active session: $e\n$st');
+    }
     return null;
   }
 
@@ -66,7 +108,9 @@ class CaptureStorageService {
       if (await file.exists()) {
         await file.delete();
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Failed to clear active session: $e\n$st');
+    }
   }
 
   // Preferences
@@ -79,21 +123,27 @@ class CaptureStorageService {
           return jsonDecode(content) as Map<String, dynamic>;
         }
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Failed to load preferences: $e\n$st');
+    }
     return {};
   }
 
   Future<void> _savePrefs(Map<String, dynamic> prefs) async {
     try {
       final file = await _getFile('preferences.json');
-      await file.writeAsString(jsonEncode(prefs), flush: true);
-    } catch (_) {}
+      await _safeWriteJson(file, prefs);
+    } catch (e, st) {
+      debugPrint('Failed to save preferences: $e\n$st');
+    }
   }
 
   Future<void> saveDefaultOutputDirectory(String path) async {
-    final prefs = await _loadPrefs();
-    prefs['defaultOutputDirectory'] = path;
-    await _savePrefs(prefs);
+    return _serializePrefOp(() async {
+      final prefs = await _loadPrefs();
+      prefs['defaultOutputDirectory'] = path;
+      await _savePrefs(prefs);
+    });
   }
 
   Future<String?> loadDefaultOutputDirectory() async {
@@ -103,24 +153,52 @@ class CaptureStorageService {
       return saved;
     }
 
-    // Default to user Documents/TSharkCaptures
+    // Default to a safe local directory outside cloud sync (e.g. OneDrive)
     try {
+      if (Platform.isWindows) {
+        final localAppData = Platform.environment['LOCALAPPDATA'];
+        if (localAppData != null && localAppData.isNotEmpty) {
+          final defaultCaptures = p.join(localAppData, 'TSharkCaptures');
+          final dir = Directory(defaultCaptures);
+          if (!dir.existsSync()) {
+            dir.createSync(recursive: true);
+          }
+          return defaultCaptures;
+        }
+      }
+
       final docs = await getApplicationDocumentsDirectory();
+      // If Documents path contains OneDrive, avoid saving captures there
+      if (docs.path.toLowerCase().contains('onedrive')) {
+        final home = Platform.environment['USERPROFILE'] ?? Platform.environment['HOME'];
+        if (home != null && home.isNotEmpty) {
+          final safeDir = p.join(home, 'TSharkCaptures');
+          final dir = Directory(safeDir);
+          if (!dir.existsSync()) {
+            dir.createSync(recursive: true);
+          }
+          return safeDir;
+        }
+      }
+
       final defaultCaptures = p.join(docs.path, 'TSharkCaptures');
       final dir = Directory(defaultCaptures);
       if (!dir.existsSync()) {
         dir.createSync(recursive: true);
       }
       return defaultCaptures;
-    } catch (_) {
+    } catch (e, st) {
+      debugPrint('Error resolving default output directory: $e\n$st');
       return p.join(Directory.current.path, 'captures');
     }
   }
 
   Future<void> saveCustomTSharkPath(String path) async {
-    final prefs = await _loadPrefs();
-    prefs['customTSharkPath'] = path;
-    await _savePrefs(prefs);
+    return _serializePrefOp(() async {
+      final prefs = await _loadPrefs();
+      prefs['customTSharkPath'] = path;
+      await _savePrefs(prefs);
+    });
   }
 
   Future<String?> loadCustomTSharkPath() async {
@@ -129,9 +207,11 @@ class CaptureStorageService {
   }
 
   Future<void> saveLastInterfaceIndex(String index) async {
-    final prefs = await _loadPrefs();
-    prefs['lastInterfaceIndex'] = index;
-    await _savePrefs(prefs);
+    return _serializePrefOp(() async {
+      final prefs = await _loadPrefs();
+      prefs['lastInterfaceIndex'] = index;
+      await _savePrefs(prefs);
+    });
   }
 
   Future<String?> loadLastInterfaceIndex() async {
@@ -139,10 +219,25 @@ class CaptureStorageService {
     return prefs['lastInterfaceIndex'] as String?;
   }
 
-  Future<void> saveDefaultRecoveryPolicy(RecoveryPolicy policy) async {
+  Future<void> saveLastInterfaceName(String name) async {
+    return _serializePrefOp(() async {
+      final prefs = await _loadPrefs();
+      prefs['lastInterfaceName'] = name;
+      await _savePrefs(prefs);
+    });
+  }
+
+  Future<String?> loadLastInterfaceName() async {
     final prefs = await _loadPrefs();
-    prefs['defaultRecoveryPolicy'] = policy.name;
-    await _savePrefs(prefs);
+    return prefs['lastInterfaceName'] as String?;
+  }
+
+  Future<void> saveDefaultRecoveryPolicy(RecoveryPolicy policy) async {
+    return _serializePrefOp(() async {
+      final prefs = await _loadPrefs();
+      prefs['defaultRecoveryPolicy'] = policy.name;
+      await _savePrefs(prefs);
+    });
   }
 
   Future<RecoveryPolicy> loadDefaultRecoveryPolicy() async {
@@ -170,7 +265,9 @@ class CaptureStorageService {
               .toList();
         }
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Failed to load history: $e\n$st');
+    }
     return [];
   }
 
@@ -184,11 +281,13 @@ class CaptureStorageService {
         current.removeRange(50, current.length);
       }
       final file = await _getFile('history.json');
-      await file.writeAsString(
-        jsonEncode(current.map((e) => e.toJson()).toList()),
-        flush: true,
+      await _safeWriteJson(
+        file,
+        current.map((e) => e.toJson()).toList(),
       );
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Failed to add history item: $e\n$st');
+    }
   }
 
   Future<void> removeHistoryItem(String filePath) async {
@@ -196,11 +295,13 @@ class CaptureStorageService {
       final current = await loadHistory();
       current.removeWhere((i) => i.filePath == filePath);
       final file = await _getFile('history.json');
-      await file.writeAsString(
-        jsonEncode(current.map((e) => e.toJson()).toList()),
-        flush: true,
+      await _safeWriteJson(
+        file,
+        current.map((e) => e.toJson()).toList(),
       );
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Failed to remove history item: $e\n$st');
+    }
   }
 
   // Custom Presets
@@ -216,7 +317,9 @@ class CaptureStorageService {
               .toList();
         }
       }
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Failed to load custom presets: $e\n$st');
+    }
     return [];
   }
 
@@ -226,11 +329,13 @@ class CaptureStorageService {
       current.removeWhere((p) => p.id == preset.id);
       current.add(preset);
       final file = await _getFile('presets.json');
-      await file.writeAsString(
-        jsonEncode(current.map((e) => e.toJson()).toList()),
-        flush: true,
+      await _safeWriteJson(
+        file,
+        current.map((e) => e.toJson()).toList(),
       );
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Failed to save custom preset: $e\n$st');
+    }
   }
 
   Future<void> deleteCustomPreset(String id) async {
@@ -238,10 +343,12 @@ class CaptureStorageService {
       final current = await loadCustomPresets();
       current.removeWhere((p) => p.id == id);
       final file = await _getFile('presets.json');
-      await file.writeAsString(
-        jsonEncode(current.map((e) => e.toJson()).toList()),
-        flush: true,
+      await _safeWriteJson(
+        file,
+        current.map((e) => e.toJson()).toList(),
       );
-    } catch (_) {}
+    } catch (e, st) {
+      debugPrint('Failed to delete custom preset: $e\n$st');
+    }
   }
 }

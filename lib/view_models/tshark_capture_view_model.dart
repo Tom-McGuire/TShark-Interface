@@ -120,6 +120,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
   Timer? _tickerTimer;
   Process? _activeProcess;
+  bool _isStopping = false;
 
   // History
   List<CaptureHistoryItem> _history = [];
@@ -131,7 +132,9 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
     try {
       final customPath = await _storageService.loadCustomTSharkPath();
-      if (customPath != null && customPath.isNotEmpty) {
+      if (customPath != null &&
+          customPath.isNotEmpty &&
+          TSharkService.isValidTSharkExecutable(customPath)) {
         _tsharkPath = customPath;
       } else {
         _tsharkPath = await _tsharkService.findTSharkPath();
@@ -145,12 +148,22 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       // Load default output directory
       _outputDirectory = (await _storageService.loadDefaultOutputDirectory()) ?? '';
 
-      // Match last interface
+      // Match last interface by device name first (stable across reboots), then index
+      final lastName = await _storageService.loadLastInterfaceName();
       final lastIdx = await _storageService.loadLastInterfaceIndex();
-      if (lastIdx != null && _interfaces.isNotEmpty) {
+      if (lastName != null && _interfaces.isNotEmpty) {
+        final match = _interfaces.where((i) => i.name == lastName);
+        if (match.isNotEmpty) {
+          _selectedInterface = match.first;
+        }
+      }
+      if (_selectedInterface == null && lastIdx != null && _interfaces.isNotEmpty) {
         final match = _interfaces.where((i) => i.index == lastIdx);
-        _selectedInterface = match.isNotEmpty ? match.first : _interfaces.first;
-      } else if (_interfaces.isNotEmpty) {
+        if (match.isNotEmpty) {
+          _selectedInterface = match.first;
+        }
+      }
+      if (_selectedInterface == null && _interfaces.isNotEmpty) {
         // Prefer Wi-Fi or Ethernet if available
         final preferred = _interfaces.firstWhere(
           (i) =>
@@ -196,10 +209,18 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
   Future<void> setCustomTSharkPath(String path) async {
     final clean = path.trim();
-    if (clean.isNotEmpty && !File(clean).existsSync()) {
-      _errorMessage = 'Executable not found at: $clean';
-      notifyListeners();
-      return;
+    if (clean.isNotEmpty) {
+      if (!File(clean).existsSync()) {
+        _errorMessage = 'Executable not found at: $clean';
+        notifyListeners();
+        return;
+      }
+      if (!TSharkService.isValidTSharkExecutable(clean)) {
+        _errorMessage =
+            'Selected file is not a valid TShark executable (must be named tshark or tshark.exe).';
+        notifyListeners();
+        return;
+      }
     }
 
     _tsharkPath = clean.isEmpty ? await _tsharkService.findTSharkPath() : clean;
@@ -228,11 +249,18 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       // Process is dead: system rebooted, crashed, or terminated unexpectedly.
       // 1. Record interrupted capture in history if target file was created
       try {
-        final size = await _tsharkService.getCaptureSizeBytes(session.targetFilePath);
-        if (size > 0) {
+        String recordedFilePath = session.targetFilePath;
+        if (session.mode == CaptureMode.ringBuffer) {
+          final latest = await _tsharkService.findLatestPcapFile(session.outputDirectory);
+          if (latest != null) {
+            recordedFilePath = latest;
+          }
+        }
+        final size = await _tsharkService.getCaptureSizeBytes(recordedFilePath);
+        if (size > 0 || File(recordedFilePath).existsSync()) {
           final historyItem = CaptureHistoryItem(
-            filePath: session.targetFilePath,
-            fileName: p.basename(session.targetFilePath),
+            filePath: recordedFilePath,
+            fileName: p.basename(recordedFilePath),
             timestamp: session.startedAt,
             fileSizeBytes: size,
             interfaceName: session.interfaceName,
@@ -267,6 +295,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   void setSelectedInterface(CaptureInterface? iface) {
     _selectedInterface = iface;
     if (iface != null) {
+      _storageService.saveLastInterfaceName(iface.name);
       _storageService.saveLastInterfaceIndex(iface.index);
     }
     notifyListeners();
@@ -340,11 +369,16 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   }
 
   void applyConfig(CaptureConfig config) {
-    final match = _interfaces.where((i) => i.index == config.interface.index);
-    if (match.isNotEmpty) {
-      _selectedInterface = match.first;
+    final matchName = _interfaces.where((i) => i.name == config.interface.name);
+    if (matchName.isNotEmpty) {
+      _selectedInterface = matchName.first;
     } else {
-      _selectedInterface = config.interface;
+      final matchIdx = _interfaces.where((i) => i.index == config.interface.index);
+      if (matchIdx.isNotEmpty) {
+        _selectedInterface = matchIdx.first;
+      } else {
+        _selectedInterface = config.interface;
+      }
     }
 
     _outputDirectory = config.outputDirectory;
@@ -504,6 +538,16 @@ class TSharkCaptureViewModel extends ChangeNotifier {
         tsharkPath: _tsharkPath!,
         config: config,
         detached: _runDetached,
+        onProcessExit: (exitCode) {
+          if (exitCode != 0) {
+            final recent = _tsharkService.recentStderr;
+            final errDetails = recent.isNotEmpty
+                ? ': ${recent.last}'
+                : ' (exit code $exitCode)';
+            _errorMessage = 'TShark capture process exited unexpectedly$errDetails';
+            notifyListeners();
+          }
+        },
       );
 
       _activeProcess = result.process;
@@ -538,8 +582,8 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   }
 
   Future<void> stopCapture() async {
-    if (_activeSession == null) return;
-
+    if (_isStopping || _activeSession == null) return;
+    _isStopping = true;
     _isLoading = true;
     notifyListeners();
 
@@ -552,18 +596,29 @@ class TSharkCaptureViewModel extends ChangeNotifier {
         _activeProcess = null;
       }
 
+      // In ring-buffer mode, resolve the actual created file
+      String recordedFilePath = session.targetFilePath;
+      if (session.mode == CaptureMode.ringBuffer) {
+        final latest = await _tsharkService.findLatestPcapFile(session.outputDirectory);
+        if (latest != null) {
+          recordedFilePath = latest;
+        }
+      }
+
       // Add to history if target file was generated
-      final size = await _tsharkService.getCaptureSizeBytes(session.targetFilePath);
-      final historyItem = CaptureHistoryItem(
-        filePath: session.targetFilePath,
-        fileName: p.basename(session.targetFilePath),
-        timestamp: session.startedAt,
-        fileSizeBytes: size,
-        interfaceName: session.interfaceName,
-        filter: session.filter,
-      );
-      await _storageService.addHistoryItem(historyItem);
-      _history = await _storageService.loadHistory();
+      final size = await _tsharkService.getCaptureSizeBytes(recordedFilePath);
+      if (size > 0 || File(recordedFilePath).existsSync()) {
+        final historyItem = CaptureHistoryItem(
+          filePath: recordedFilePath,
+          fileName: p.basename(recordedFilePath),
+          timestamp: session.startedAt,
+          fileSizeBytes: size,
+          interfaceName: session.interfaceName,
+          filter: session.filter,
+        );
+        await _storageService.addHistoryItem(historyItem);
+        _history = await _storageService.loadHistory();
+      }
 
       await _storageService.clearActiveSession();
       _activeSession = null;
@@ -573,6 +628,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       _errorMessage = 'Error stopping capture: $e';
     } finally {
       _isLoading = false;
+      _isStopping = false;
       notifyListeners();
     }
   }
@@ -591,8 +647,18 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
       // Every 3 seconds, poll capture file size and verify process
       if (timer.tick % 3 == 0) {
-        _currentCaptureSizeBytes =
-            await _tsharkService.getCaptureSizeBytes(_activeSession!.targetFilePath);
+        if (_activeSession!.mode == CaptureMode.ringBuffer) {
+          final latest = await _tsharkService.findLatestPcapFile(_activeSession!.outputDirectory);
+          if (latest != null) {
+            _currentCaptureSizeBytes = await _tsharkService.getCaptureSizeBytes(latest);
+          } else {
+            _currentCaptureSizeBytes =
+                await _tsharkService.getCaptureSizeBytes(_activeSession!.targetFilePath);
+          }
+        } else {
+          _currentCaptureSizeBytes =
+              await _tsharkService.getCaptureSizeBytes(_activeSession!.targetFilePath);
+        }
 
         // Check if process finished automatically (e.g. timed or packet count reached)
         final alive = await _tsharkService.isProcessAlive(_activeSession!.pid);

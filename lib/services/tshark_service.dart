@@ -1,4 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import '../models/capture_config.dart';
 import '../models/capture_interface.dart';
@@ -10,6 +13,7 @@ class CaptureProcessResult {
     required this.targetFilePath,
     required this.commandLine,
     this.process,
+    this.recentStderr = const [],
   });
 
   final int pid;
@@ -17,17 +21,41 @@ class CaptureProcessResult {
   final String targetFilePath;
   final String commandLine;
   final Process? process;
+  final List<String> recentStderr;
 }
 
 class TSharkService {
   TSharkService({this.customTSharkPath});
 
   final String? customTSharkPath;
+  List<String> _recentStderr = [];
+  List<String> get recentStderr => List.unmodifiable(_recentStderr);
+
+  /// Validates whether a given executable path is a genuine tshark binary.
+  static bool isValidTSharkExecutable(String filePath) {
+    if (filePath.isEmpty) return false;
+    final file = File(filePath);
+    if (!file.existsSync()) return false;
+    final basename = p.basenameWithoutExtension(filePath).toLowerCase();
+    return basename == 'tshark';
+  }
+
+  /// Sanitizes file prefixes to prevent path traversal, directory escape, and NTFS stream creation.
+  static String sanitizeFilePrefix(String rawPrefix) {
+    // Only allow alphanumeric characters, underscores, and hyphens
+    var clean = rawPrefix.replaceAll(RegExp(r'[^a-zA-Z0-9_\-]'), '_');
+    clean = clean.replaceAll(RegExp(r'[_\-]+'), '_');
+    clean = clean.replaceAll(RegExp(r'^_+|_+$'), '');
+    if (clean.isEmpty) {
+      return 'capture';
+    }
+    return clean;
+  }
 
   /// Attempts to locate the `tshark` executable on the host system.
   Future<String?> findTSharkPath() async {
     if (customTSharkPath != null && customTSharkPath!.isNotEmpty) {
-      if (await File(customTSharkPath!).exists()) {
+      if (isValidTSharkExecutable(customTSharkPath!)) {
         return customTSharkPath;
       }
     }
@@ -38,7 +66,7 @@ class TSharkService {
         r'C:\Program Files (x86)\Wireshark\tshark.exe',
       ];
       for (final path in candidates) {
-        if (await File(path).exists()) {
+        if (isValidTSharkExecutable(path)) {
           return path;
         }
       }
@@ -48,11 +76,13 @@ class TSharkService {
         final res = await Process.run('where', ['tshark']);
         if (res.exitCode == 0 && res.stdout.toString().trim().isNotEmpty) {
           final firstLine = res.stdout.toString().trim().split(RegExp(r'[\r\n]+')).first;
-          if (await File(firstLine).exists()) {
+          if (isValidTSharkExecutable(firstLine)) {
             return firstLine;
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('findTSharkPath where check error: $e');
+      }
     } else {
       const candidates = [
         '/usr/bin/tshark',
@@ -60,7 +90,7 @@ class TSharkService {
         '/opt/homebrew/bin/tshark',
       ];
       for (final path in candidates) {
-        if (await File(path).exists()) {
+        if (isValidTSharkExecutable(path)) {
           return path;
         }
       }
@@ -69,11 +99,13 @@ class TSharkService {
         final res = await Process.run('which', ['tshark']);
         if (res.exitCode == 0 && res.stdout.toString().trim().isNotEmpty) {
           final found = res.stdout.toString().trim().split(RegExp(r'[\r\n]+')).first;
-          if (await File(found).exists()) {
+          if (isValidTSharkExecutable(found)) {
             return found;
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('findTSharkPath which check error: $e');
+      }
     }
 
     return null;
@@ -82,18 +114,22 @@ class TSharkService {
   /// Queries tshark version string (e.g. "TShark (Wireshark) 4.2.4").
   Future<String?> getVersion(String tsharkPath) async {
     try {
+      if (!isValidTSharkExecutable(tsharkPath)) return null;
       final res = await Process.run(tsharkPath, ['-v']);
       if (res.exitCode == 0) {
         final firstLine = res.stdout.toString().trim().split(RegExp(r'[\r\n]+')).first;
         return firstLine;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('getVersion error: $e');
+    }
     return null;
   }
 
   /// Queries system capture interfaces using `tshark -D`.
   Future<List<CaptureInterface>> getInterfaces(String tsharkPath) async {
     try {
+      if (!isValidTSharkExecutable(tsharkPath)) return [];
       final res = await Process.run(tsharkPath, ['-D']);
       if (res.exitCode != 0) {
         return [];
@@ -127,16 +163,24 @@ class TSharkService {
       }
 
       return interfaces;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('getInterfaces error: $e');
       return [];
     }
   }
 
   /// Builds command-line arguments for tshark based on the configuration.
+  /// Uses stable interface device name (e.g. `\Device\NPF_{GUID}`) instead of volatile index numbers.
   List<String> buildArguments(CaptureConfig config, String fullOutputPath) {
+    // Prefer stable device name if available, fallback to index
+    final ifaceTarget = config.interface.name.isNotEmpty
+        ? config.interface.name
+        : config.interface.index;
+
     final args = <String>[
       '-i',
-      config.interface.index,
+      ifaceTarget,
+      '-q', // Quiet mode to avoid filling OS pipe buffers with packet counters
     ];
 
     if (!config.promiscuous) {
@@ -198,10 +242,12 @@ class TSharkService {
   }
 
   /// Generates a readable CLI command string for displaying and copying.
+  /// Formats Windows paths with `& ` for ready execution in PowerShell.
   String buildDisplayCommandLine({
     required String tsharkPath,
     required CaptureConfig config,
     required String fullOutputPath,
+    bool forPowerShell = true,
   }) {
     final args = buildArguments(config, fullOutputPath);
     final quotedArgs = args.map((arg) {
@@ -211,23 +257,31 @@ class TSharkService {
       return arg;
     }).toList();
 
-    final exe = tsharkPath.contains(' ') ? '"$tsharkPath"' : tsharkPath;
-    return '$exe ${quotedArgs.join(' ')}';
+    final exeNeedsQuotes = tsharkPath.contains(' ');
+    final exe = exeNeedsQuotes ? '"$tsharkPath"' : tsharkPath;
+    final prefix = (Platform.isWindows && forPowerShell && exeNeedsQuotes) ? '& ' : '';
+    return '$prefix$exe ${quotedArgs.join(' ')}';
   }
 
-  /// Starts the TShark capture process.
+  /// Starts the TShark capture process with pipe draining, quiet mode, and path traversal guards.
   Future<CaptureProcessResult> startCapture({
     required String tsharkPath,
     required CaptureConfig config,
     bool detached = false,
+    void Function(int exitCode)? onProcessExit,
   }) async {
+    if (!isValidTSharkExecutable(tsharkPath)) {
+      throw ArgumentError('Invalid or missing tshark executable: $tsharkPath');
+    }
+
     final now = DateTime.now();
     final timestamp =
         '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_'
         '${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}${now.second.toString().padLeft(2, '0')}';
 
-    var targetDir = config.outputDirectory;
-    if (config.createSubfolder) {
+    var targetDir = p.canonicalize(config.outputDirectory);
+    // Ring buffers and subfolder options isolate files into dedicated timestamped directories
+    if (config.createSubfolder || config.mode == CaptureMode.ringBuffer) {
       targetDir = p.join(targetDir, 'Capture_$timestamp');
     }
 
@@ -236,9 +290,14 @@ class TSharkService {
       dir.createSync(recursive: true);
     }
 
-    final prefix = config.filePrefix.trim().isNotEmpty ? config.filePrefix.trim() : 'capture';
-    final filename = '${prefix}_$timestamp.pcapng';
-    final fullOutputPath = p.join(targetDir, filename);
+    final sanitizedPrefix = sanitizeFilePrefix(config.filePrefix);
+    final filename = '${sanitizedPrefix}_$timestamp.pcapng';
+    final fullOutputPath = p.canonicalize(p.join(targetDir, filename));
+
+    // Security check S1: verify path has not escaped targetDir
+    if (!p.isWithin(targetDir, fullOutputPath)) {
+      throw SecurityException('Target capture path is outside the designated capture folder');
+    }
 
     final args = buildArguments(config, fullOutputPath);
     final cmdLine = buildDisplayCommandLine(
@@ -254,46 +313,117 @@ class TSharkService {
       mode: mode,
     );
 
+    final stderrBuffer = <String>[];
+    _recentStderr = stderrBuffer;
+
+    if (!detached) {
+      // Drain stdout to prevent pipe buffer stalls
+      process.stdout
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((_) {}, onError: (_) {});
+
+      // Drain and buffer stderr to surface errors on failure
+      process.stderr
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen((line) {
+        if (line.trim().isNotEmpty) {
+          stderrBuffer.add(line.trim());
+          if (stderrBuffer.length > 20) {
+            stderrBuffer.removeAt(0);
+          }
+        }
+      }, onError: (_) {});
+
+      // Attach direct exit code notification
+      if (onProcessExit != null) {
+        process.exitCode.then((code) {
+          onProcessExit(code);
+        });
+      }
+    }
+
     return CaptureProcessResult(
       pid: process.pid,
       targetDirectory: targetDir,
       targetFilePath: fullOutputPath,
       commandLine: cmdLine,
       process: detached ? null : process,
+      recentStderr: stderrBuffer,
     );
   }
 
-  /// Checks if a process with the given PID is currently active and belongs to tshark/dumpcap.
+  /// Checks if a process with the given PID is currently active and belongs strictly to tshark or dumpcap.
   Future<bool> isProcessAlive(int pid) async {
     try {
       if (Platform.isWindows) {
         final res = await Process.run('tasklist', ['/FI', 'PID eq $pid', '/FO', 'CSV', '/NH']);
         if (res.exitCode == 0) {
-          final out = res.stdout.toString().toLowerCase();
-          return out.contains(pid.toString()) && (out.contains('tshark') || out.contains('dumpcap'));
+          final lines = res.stdout.toString().trim().split(RegExp(r'[\r\n]+'));
+          for (final line in lines) {
+            if (line.isEmpty) continue;
+            // Parse CSV format: "Image Name","PID","Session Name","Session#","Mem Usage"
+            final parts = line.split('","').map((s) => s.replaceAll('"', '').trim()).toList();
+            if (parts.length >= 2) {
+              final imgName = parts[0].toLowerCase();
+              final linePid = parts[1];
+              if (linePid == pid.toString() &&
+                  (imgName == 'tshark.exe' || imgName == 'dumpcap.exe')) {
+                return true;
+              }
+            }
+          }
         }
         return false;
       } else {
-        final res = await Process.run('kill', ['-0', pid.toString()]);
-        return res.exitCode == 0;
+        // Unix: verify /proc/$pid/comm or ps comm
+        final res = await Process.run('ps', ['-p', pid.toString(), '-o', 'comm=']);
+        if (res.exitCode == 0) {
+          final comm = res.stdout.toString().trim().toLowerCase();
+          return comm.contains('tshark') || comm.contains('dumpcap');
+        }
+        return false;
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('isProcessAlive error: $e');
       return false;
     }
   }
 
-  /// Terminates a running capture process cleanly, ensuring all child processes (dumpcap) stop.
+  /// Terminates a running capture cleanly, attempting graceful shutdown first, then force-kill.
   Future<bool> stopCapture(int pid) async {
     try {
       if (Platform.isWindows) {
-        // Using taskkill /PID ... /T /F ensures dumpcap is also stopped.
-        final res = await Process.run('taskkill', ['/PID', pid.toString(), '/T', '/F']);
-        return res.exitCode == 0;
+        // 1. Attempt graceful shutdown first (without /F)
+        await Process.run('taskkill', ['/PID', pid.toString(), '/T']);
+
+        // 2. Wait up to 1.5 seconds for buffers to flush
+        for (var i = 0; i < 3; i++) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (!await isProcessAlive(pid)) {
+            return true;
+          }
+        }
+
+        // 3. Fallback to force-kill if still active
+        final forceRes = await Process.run('taskkill', ['/PID', pid.toString(), '/T', '/F']);
+        return forceRes.exitCode == 0;
       } else {
-        final res = await Process.run('kill', ['-15', pid.toString()]);
-        return res.exitCode == 0;
+        // 1. Send SIGTERM
+        await Process.run('kill', ['-15', pid.toString()]);
+        for (var i = 0; i < 3; i++) {
+          await Future.delayed(const Duration(milliseconds: 500));
+          if (!await isProcessAlive(pid)) {
+            return true;
+          }
+        }
+        // 2. Send SIGKILL
+        final killRes = await Process.run('kill', ['-9', pid.toString()]);
+        return killRes.exitCode == 0;
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('stopCapture error: $e');
       try {
         return Process.killPid(pid);
       } catch (_) {
@@ -313,13 +443,54 @@ class TSharkService {
       if (await dir.exists()) {
         var total = 0;
         await for (final entity in dir.list(followLinks: false)) {
-          if (entity is File && entity.path.endsWith('.pcapng')) {
-            total += await entity.length();
+          if (entity is File) {
+            final ext = p.extension(entity.path).toLowerCase();
+            if (ext == '.pcap' || ext == '.pcapng' || ext == '.cap') {
+              total += await entity.length();
+            }
           }
         }
         return total;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('getCaptureSizeBytes error: $e');
+    }
     return 0;
   }
+
+  /// Finds the latest modified pcap file in a directory (crucial for ring buffer captures).
+  Future<String?> findLatestPcapFile(String dirPath) async {
+    try {
+      final dir = Directory(dirPath);
+      if (!await dir.exists()) return null;
+
+      File? latestFile;
+      DateTime? latestModified;
+
+      await for (final entity in dir.list(followLinks: false)) {
+        if (entity is File) {
+          final ext = p.extension(entity.path).toLowerCase();
+          if (ext == '.pcap' || ext == '.pcapng' || ext == '.cap') {
+            final modified = await entity.lastModified();
+            if (latestModified == null || modified.isAfter(latestModified)) {
+              latestModified = modified;
+              latestFile = entity;
+            }
+          }
+        }
+      }
+
+      return latestFile?.path;
+    } catch (e) {
+      debugPrint('findLatestPcapFile error: $e');
+      return null;
+    }
+  }
+}
+
+class SecurityException implements Exception {
+  SecurityException(this.message);
+  final String message;
+  @override
+  String toString() => 'SecurityException: $message';
 }

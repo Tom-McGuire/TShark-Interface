@@ -1,7 +1,18 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:path/path.dart' as p;
 
 class SystemService {
+  static const List<String> allowedPcapExtensions = ['.pcap', '.pcapng', '.cap'];
+
+  /// Validates that a file is an allowable packet capture before opening.
+  static bool isValidPcapFile(String filePath) {
+    if (filePath.isEmpty) return false;
+    final ext = p.extension(filePath).toLowerCase();
+    return allowedPcapExtensions.contains(ext);
+  }
+
   /// Opens a folder in the native file explorer.
   static Future<bool> openFolder(String folderPath) async {
     try {
@@ -19,14 +30,23 @@ class SystemService {
         await Process.run('xdg-open', [folderPath]);
         return true;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('openFolder error: $e');
+    }
     return false;
   }
 
-  /// Opens a file in Wireshark or the default registered viewer.
+  /// Opens a capture file in Wireshark or the default registered viewer.
+  /// Enforces extension validation (S2) to prevent executing untrusted scripts/binaries.
   static Future<bool> openInWireshark(String filePath) async {
     try {
-      if (!File(filePath).existsSync()) return false;
+      if (!isValidPcapFile(filePath)) {
+        debugPrint('Rejected opening file with non-pcap extension: $filePath');
+        return false;
+      }
+
+      final file = File(filePath);
+      if (!file.existsSync()) return false;
 
       if (Platform.isWindows) {
         const wiresharkPaths = [
@@ -39,7 +59,7 @@ class SystemService {
             return true;
           }
         }
-        // Fallback to default associated program
+        // Fallback to default associated program for pcap files
         await Process.run('explorer.exe', [filePath]);
         return true;
       } else if (Platform.isMacOS) {
@@ -49,7 +69,9 @@ class SystemService {
         await Process.run('wireshark', [filePath]);
         return true;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('openInWireshark error: $e');
+    }
     return false;
   }
 

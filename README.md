@@ -6,10 +6,10 @@ Designed to give network engineers, developers, and sysadmins full control over 
 
 ---
 
-## Features
+## Key Features
 
-- **Automatic Engine Detection**: Automatically discovers Wireshark's `tshark.exe` (or custom user-defined path) and queries version and available network interfaces.
-- **Visual Interface Picker**: Choose physical or virtual network adapters (`Wi-Fi`, `Ethernet`, `NPF_Loopback`, `Tailscale`) with hardware names and indexes.
+- **Automatic Engine Detection & Path Validation**: Automatically discovers Wireshark's `tshark.exe` (or custom user-defined path) and validates binary integrity before querying version and available network interfaces.
+- **Visual Interface Picker**: Choose physical or virtual network adapters (`Wi-Fi`, `Ethernet`, `NPF_Loopback`, `Tailscale`) with hardware names and indexes. Captures bind to persistent adapter device paths (e.g. `\Device\NPF_{GUID}`) so adapter index shifts across reboots or VPN connects never misroute captures.
 - **One-Click Presets**:
   - *All Traffic*: Full capture with no filters.
   - *Exclude SSH & RDP*: Automatically drops port 22 and 3389 to prevent feedback loops when capturing on remote hosts.
@@ -25,19 +25,31 @@ Designed to give network engineers, developers, and sysadmins full control over 
   - *Timed Duration*: Auto-stops after specified hours/minutes.
   - *Rolling Ring Buffer*: Rotates files by time (minutes) or by size (MB), preserving the latest *N* files.
   - *Packet Count*: Auto-stops after capturing *N* packets.
+- **Reboot & Crash Recovery**:
+  - Automatically detects interrupted sessions if the host was restarted or powered off.
+  - Configurable policy: **Prompt to Resume**, **Auto-Restore (Unattended / Headless)**, or **No Recovery**.
 - **Live Command-Line Studio**:
   - Shows the exact `tshark` command in real-time as options are configured.
-  - One-click copy button to paste into remote SSH terminal or scripts.
+  - Toggle between **PowerShell** (with `& ` call operator) and **CMD / Bash** syntax.
   - Detached (headless background) execution switch.
 - **Active Capture Session Manager**:
   - Glowing live status bar with PID indicator.
   - Real-time elapsed stopwatch.
-  - Dynamic capture file size monitor.
-  - Safe clean-tree termination (`taskkill /T /F` on Windows to kill both `tshark` and `dumpcap`).
-  - Session recovery: If the app is closed while a background capture is active, reopening the app reconnects to the running PID.
+  - Dynamic capture file size monitor (including rolling ring-buffer folders).
+  - Graceful termination: signals process tree to flush packet buffers before clean termination.
+  - Real-time stderr and error diagnostics.
 - **Recent Capture Vault**:
   - History of previous capture files with size and timestamp.
-  - One-click "Open in Explorer" and "Open in Wireshark".
+  - One-click "Open in Explorer" and "Open in Wireshark" (with extension whitelist verification).
+
+---
+
+## Security & Reliability Design
+
+- **Privilege Principle**: Running as standard user is recommended. Modern Npcap installations allow non-elevated users in the `npcap` group or standard users to capture packets without requiring Administrator elevation.
+- **Cloud-Leak Prevention**: By default, captures are saved to local app data (`%LOCALAPPDATA%\TSharkCaptures`) rather than the user's Documents folder to prevent sensitive network traffic from automatically syncing to cloud drives (OneDrive, Dropbox, etc.).
+- **Path Sanitization**: Capture file prefixes are strictly sanitized to prevent directory traversal and NTFS alternate data stream manipulation.
+- **Pipe Stall Prevention**: All capture sessions run in quiet mode (`-q`) with asynchronous stdout/stderr stream draining, preventing process deadlock on high-throughput packet streams.
 
 ---
 
@@ -45,10 +57,10 @@ Designed to give network engineers, developers, and sysadmins full control over 
 
 ### Prerequisites
 
-- [Wireshark](https://www.wireshark.org/) installed (comes with `tshark`).
+- [Wireshark](https://www.wireshark.org/) (includes `tshark` and `Npcap`).
 - [Flutter SDK](https://flutter.dev/) (3.13+ / 3.47+).
 
-### Running the App
+### Running in Development
 
 ```bash
 flutter pub get
@@ -60,3 +72,11 @@ flutter run -d windows
 ```bash
 flutter test
 ```
+
+### Building for Release
+
+```powershell
+flutter build windows --release
+```
+
+The compiled standalone application is generated under `build\windows\x64\runner\Release\`. A portable distribution archive is available in `dist\TShark-Interface-Windows-x64.zip`.

@@ -13,7 +13,7 @@ void main() {
       service = TSharkService();
     });
 
-    test('buildArguments generates correct manual mode arguments', () {
+    test('buildArguments generates correct manual mode arguments using stable device name and quiet mode', () {
       const config = CaptureConfig(
         interface: iface,
         outputDirectory: r'C:\Captures',
@@ -24,7 +24,7 @@ void main() {
       );
 
       final args = service.buildArguments(config, r'C:\Captures\test.pcapng');
-      expect(args, containsAllInOrder(['-i', '5', '-s', '96', '-f', 'not port 22', '-w', r'C:\Captures\test.pcapng']));
+      expect(args, containsAllInOrder(['-i', r'\Device\NPF_{...}', '-q', '-s', '96', '-f', 'not port 22', '-w', r'C:\Captures\test.pcapng']));
     });
 
     test('buildArguments generates timed autostop arguments', () {
@@ -37,7 +37,7 @@ void main() {
       );
 
       final args = service.buildArguments(config, r'C:\Captures\test.pcapng');
-      expect(args, containsAllInOrder(['-i', '5', '-a', 'duration:300', '-w', r'C:\Captures\test.pcapng']));
+      expect(args, containsAllInOrder(['-i', r'\Device\NPF_{...}', '-q', '-a', 'duration:300', '-w', r'C:\Captures\test.pcapng']));
     });
 
     test('buildArguments generates ring buffer arguments by time', () {
@@ -51,7 +51,7 @@ void main() {
       );
 
       final args = service.buildArguments(config, r'C:\Captures\test.pcapng');
-      expect(args, containsAllInOrder(['-i', '5', '-b', 'duration:600', '-b', 'files:5', '-w', r'C:\Captures\test.pcapng']));
+      expect(args, containsAllInOrder(['-i', r'\Device\NPF_{...}', '-q', '-b', 'duration:600', '-b', 'files:5', '-w', r'C:\Captures\test.pcapng']));
     });
 
     test('buildArguments generates ring buffer arguments by size', () {
@@ -65,7 +65,7 @@ void main() {
       );
 
       final args = service.buildArguments(config, r'C:\Captures\test.pcapng');
-      expect(args, containsAllInOrder(['-i', '5', '-b', 'filesize:51200', '-b', 'files:10', '-w', r'C:\Captures\test.pcapng']));
+      expect(args, containsAllInOrder(['-i', r'\Device\NPF_{...}', '-q', '-b', 'filesize:51200', '-b', 'files:10', '-w', r'C:\Captures\test.pcapng']));
     });
 
     test('buildArguments includes packet limit count', () {
@@ -77,7 +77,7 @@ void main() {
       );
 
       final args = service.buildArguments(config, r'C:\Captures\test.pcapng');
-      expect(args, containsAllInOrder(['-i', '5', '-c', '5000', '-w', r'C:\Captures\test.pcapng']));
+      expect(args, containsAllInOrder(['-i', r'\Device\NPF_{...}', '-q', '-c', '5000', '-w', r'C:\Captures\test.pcapng']));
     });
 
     test('buildDisplayCommandLine quotes arguments containing spaces or special characters', () {
@@ -95,9 +95,18 @@ void main() {
       );
 
       expect(cmd, contains(r'"C:\Program Files\Wireshark\tshark.exe"'));
-      expect(cmd, contains('-i 5'));
+      expect(cmd, contains(r'-i "\Device\NPF_{...}"'));
       expect(cmd, contains(r'-f "tcp port 80 or tcp port 443"'));
       expect(cmd, contains(r'-w "C:\Captures Folder\test.pcapng"'));
+    });
+
+    test('Sanitizes file prefix safely', () {
+      expect(TSharkService.sanitizeFilePrefix('test_123'), equals('test_123'));
+      expect(TSharkService.sanitizeFilePrefix('../../bad_prefix'), equals('bad_prefix'));
+      expect(TSharkService.sanitizeFilePrefix('capture:stream'), equals('capture_stream'));
+      expect(TSharkService.sanitizeFilePrefix(';; rm -rf /'), equals('rm_rf'));
+      expect(TSharkService.sanitizeFilePrefix(''), equals('capture'));
+      expect(TSharkService.sanitizeFilePrefix('___'), equals('capture'));
     });
 
     test('Built-in presets are valid and non-empty', () {
