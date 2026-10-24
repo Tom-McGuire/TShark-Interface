@@ -12,6 +12,7 @@ import 'widgets/capture_filter_input.dart';
 import 'widgets/capture_history_card.dart';
 import 'widgets/capture_presets_bar.dart';
 import 'widgets/command_preview_card.dart';
+import 'widgets/interrupted_capture_banner.dart';
 
 class CaptureHomeScreen extends StatefulWidget {
   const CaptureHomeScreen({super.key});
@@ -152,6 +153,17 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Interrupted Capture Banner (if rebooted or unexpected shutdown)
+              if (vm.interruptedSession != null) ...[
+                InterruptedCaptureBanner(
+                  session: vm.interruptedSession!,
+                  onResume: () => vm.resumeInterruptedCapture(),
+                  onLoadSettings: () => vm.loadInterruptedSettings(),
+                  onDismiss: () => vm.dismissInterruptedSession(),
+                ),
+                const SizedBox(height: 18),
+              ],
+
               // Active Capture Banner (if running)
               if (vm.isCapturing && vm.activeSession != null) ...[
                 ActiveCaptureBanner(
@@ -525,6 +537,41 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                     ),
                   ),
                 ],
+              ),
+              const Divider(height: 24, color: AppTheme.borderColor),
+
+              // Reboot & Crash Recovery Policy
+              const Text(
+                'Reboot & Crash Recovery Policy',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 2),
+              const Text(
+                'Action to take if the system restarts or shuts down while capturing.',
+                style: TextStyle(fontSize: 11, color: Colors.white54),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<RecoveryPolicy>(
+                initialValue: vm.recoveryPolicy,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.settings_backup_restore, size: 18),
+                ),
+                items: RecoveryPolicy.values.map((policy) {
+                  return DropdownMenuItem<RecoveryPolicy>(
+                    value: policy,
+                    child: Text(
+                      '${policy.label} — ${policy.description}',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  );
+                }).toList(),
+                onChanged: vm.isCapturing
+                    ? null
+                    : (val) {
+                        if (val != null) vm.setRecoveryPolicy(val);
+                      },
               ),
             ],
           ),

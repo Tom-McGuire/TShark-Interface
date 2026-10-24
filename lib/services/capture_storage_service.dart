@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../models/active_capture_session.dart';
+import '../models/capture_config.dart';
 import '../models/capture_history_item.dart';
 import '../models/capture_preset.dart';
 
@@ -136,6 +137,24 @@ class CaptureStorageService {
   Future<String?> loadLastInterfaceIndex() async {
     final prefs = await _loadPrefs();
     return prefs['lastInterfaceIndex'] as String?;
+  }
+
+  Future<void> saveDefaultRecoveryPolicy(RecoveryPolicy policy) async {
+    final prefs = await _loadPrefs();
+    prefs['defaultRecoveryPolicy'] = policy.name;
+    await _savePrefs(prefs);
+  }
+
+  Future<RecoveryPolicy> loadDefaultRecoveryPolicy() async {
+    final prefs = await _loadPrefs();
+    final name = prefs['defaultRecoveryPolicy'] as String?;
+    if (name != null) {
+      return RecoveryPolicy.values.firstWhere(
+        (p) => p.name == name,
+        orElse: () => RecoveryPolicy.prompt,
+      );
+    }
+    return RecoveryPolicy.prompt;
   }
 
   // History

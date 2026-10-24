@@ -33,6 +33,38 @@ enum CaptureMode {
   }
 }
 
+enum RecoveryPolicy {
+  none,
+  prompt,
+  auto;
+
+  String get label {
+    switch (this) {
+      case RecoveryPolicy.none:
+        return 'Disabled';
+      case RecoveryPolicy.prompt:
+        return 'Prompt to Resume';
+      case RecoveryPolicy.auto:
+        return 'Auto-Restart on Boot';
+    }
+  }
+
+  String get description {
+    switch (this) {
+      case RecoveryPolicy.none:
+        return 'Do not restore capture after reboot or unexpected termination.';
+      case RecoveryPolicy.prompt:
+        return 'Flag interrupted capture and prompt to resume when the app starts.';
+      case RecoveryPolicy.auto:
+        return 'Automatically restart capture with the same settings on app start (ideal for unattended setups).';
+    }
+  }
+
+  bool get isNone => this == RecoveryPolicy.none;
+  bool get isPrompt => this == RecoveryPolicy.prompt;
+  bool get isAuto => this == RecoveryPolicy.auto;
+}
+
 class CaptureConfig {
   const CaptureConfig({
     required this.interface,
@@ -50,6 +82,7 @@ class CaptureConfig {
     this.captureFilter = '',
     this.snaplen = 0,
     this.promiscuous = true,
+    this.recoveryPolicy = RecoveryPolicy.prompt,
   });
 
   final CaptureInterface interface;
@@ -76,6 +109,9 @@ class CaptureConfig {
   final int snaplen; // 0 = full packet, >0 = packet payload slice
   final bool promiscuous;
 
+  // Reboot / crash recovery policy
+  final RecoveryPolicy recoveryPolicy;
+
   int get totalTimedSeconds => (durationHours * 3600) + (durationMinutes * 60);
 
   CaptureConfig copyWith({
@@ -94,6 +130,7 @@ class CaptureConfig {
     String? captureFilter,
     int? snaplen,
     bool? promiscuous,
+    RecoveryPolicy? recoveryPolicy,
   }) {
     return CaptureConfig(
       interface: interface ?? this.interface,
@@ -111,6 +148,7 @@ class CaptureConfig {
       captureFilter: captureFilter ?? this.captureFilter,
       snaplen: snaplen ?? this.snaplen,
       promiscuous: promiscuous ?? this.promiscuous,
+      recoveryPolicy: recoveryPolicy ?? this.recoveryPolicy,
     );
   }
 
@@ -130,6 +168,7 @@ class CaptureConfig {
         'captureFilter': captureFilter,
         'snaplen': snaplen,
         'promiscuous': promiscuous,
+        'recoveryPolicy': recoveryPolicy.name,
       };
 
   factory CaptureConfig.fromJson(Map<String, dynamic> json) {
@@ -154,6 +193,10 @@ class CaptureConfig {
       captureFilter: json['captureFilter'] as String? ?? '',
       snaplen: json['snaplen'] as int? ?? 0,
       promiscuous: json['promiscuous'] as bool? ?? true,
+      recoveryPolicy: RecoveryPolicy.values.firstWhere(
+        (p) => p.name == json['recoveryPolicy'],
+        orElse: () => RecoveryPolicy.prompt,
+      ),
     );
   }
 }

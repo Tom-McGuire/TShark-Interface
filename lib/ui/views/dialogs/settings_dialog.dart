@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:tshark_interface/models/capture_config.dart';
 import 'package:tshark_interface/ui/theme/app_theme.dart';
 import 'package:tshark_interface/view_models/tshark_capture_view_model.dart';
 
@@ -15,12 +16,14 @@ class SettingsDialog extends StatefulWidget {
 class _SettingsDialogState extends State<SettingsDialog> {
   late TextEditingController _tsharkPathController;
   late TextEditingController _defaultDirController;
+  late RecoveryPolicy _defaultPolicy;
 
   @override
   void initState() {
     super.initState();
     _tsharkPathController = TextEditingController(text: widget.viewModel.tsharkPath ?? '');
     _defaultDirController = TextEditingController(text: widget.viewModel.outputDirectory);
+    _defaultPolicy = widget.viewModel.recoveryPolicy;
   }
 
   @override
@@ -55,6 +58,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     if (_defaultDirController.text.trim().isNotEmpty) {
       widget.viewModel.setOutputDirectory(_defaultDirController.text.trim());
     }
+    await widget.viewModel.setDefaultRecoveryPolicy(_defaultPolicy);
     if (mounted) {
       Navigator.of(context).pop();
     }
@@ -152,6 +156,63 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 20),
+
+              // Default Recovery Policy
+              const Text(
+                'Default Reboot & Crash Recovery Policy',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Initial policy assigned when configuring new packet captures.',
+                style: TextStyle(fontSize: 11, color: Colors.white54),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<RecoveryPolicy>(
+                initialValue: _defaultPolicy,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.settings_backup_restore, size: 18),
+                ),
+                items: RecoveryPolicy.values.map((policy) {
+                  return DropdownMenuItem<RecoveryPolicy>(
+                    value: policy,
+                    child: Text(
+                      '${policy.label} — ${policy.description}',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  );
+                }).toList(),
+                onChanged: (val) {
+                  if (val != null) setState(() => _defaultPolicy = val);
+                },
+              ),
+              const SizedBox(height: 12),
+
+              // Unattended Setup Tip
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF13171F),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppTheme.borderColor),
+                ),
+                child: const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.lightbulb_outline, size: 16, color: AppTheme.accentCyan),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Tip for Unattended Machines: Set policy to "Auto-Restart on Boot", then place a shortcut to T-Shark Interface in your Windows Startup folder (press Win+R and type "shell:startup").',
+                        style: TextStyle(fontSize: 11, color: Colors.white70, height: 1.4),
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 20),
 

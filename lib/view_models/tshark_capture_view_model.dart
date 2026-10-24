@@ -54,6 +54,13 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   String? _activePresetId = 'all_traffic';
   String? get activePresetId => _activePresetId;
 
+  // Recovery policy & interrupted session
+  RecoveryPolicy _recoveryPolicy = RecoveryPolicy.prompt;
+  RecoveryPolicy get recoveryPolicy => _recoveryPolicy;
+
+  ActiveCaptureSession? _interruptedSession;
+  ActiveCaptureSession? get interruptedSession => _interruptedSession;
+
   // Config fields
   CaptureMode _mode = CaptureMode.manual;
   CaptureMode get mode => _mode;
@@ -157,6 +164,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       // Load presets & history
       _presets = [...CapturePreset.builtInPresets, ...await _storageService.loadCustomPresets()];
       _history = await _storageService.loadHistory();
+      _recoveryPolicy = await _storageService.loadDefaultRecoveryPolicy();
 
       // Check if session was already running in background
       await checkExistingSession();
@@ -217,8 +225,40 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       _statusMessage = 'Reconnected to background capture (PID ${session.pid}).';
       _startSessionTicker();
     } else {
+      // Process is dead: system rebooted, crashed, or terminated unexpectedly.
+      // 1. Record interrupted capture in history if target file was created
+      try {
+        final size = await _tsharkService.getCaptureSizeBytes(session.targetFilePath);
+        if (size > 0) {
+          final historyItem = CaptureHistoryItem(
+            filePath: session.targetFilePath,
+            fileName: p.basename(session.targetFilePath),
+            timestamp: session.startedAt,
+            fileSizeBytes: size,
+            interfaceName: session.interfaceName,
+            filter: session.filter,
+          );
+          await _storageService.addHistoryItem(historyItem);
+          _history = await _storageService.loadHistory();
+        }
+      } catch (_) {}
+
+      // 2. Clear previous active session file
       await _storageService.clearActiveSession();
       _activeSession = null;
+
+      // 3. Handle recovery policy
+      if (session.recoveryPolicy.isAuto) {
+        if (session.config != null) {
+          applyConfig(session.config!);
+          _statusMessage =
+              'Auto-restored capture after system reboot on ${session.config!.interface.displayName}.';
+          // Start fresh capture automatically
+          unawaited(startCapture());
+        }
+      } else if (session.recoveryPolicy.isPrompt) {
+        _interruptedSession = session;
+      }
     }
     notifyListeners();
   }
@@ -288,6 +328,71 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setRecoveryPolicy(RecoveryPolicy val) {
+    _recoveryPolicy = val;
+    notifyListeners();
+  }
+
+  Future<void> setDefaultRecoveryPolicy(RecoveryPolicy val) async {
+    _recoveryPolicy = val;
+    await _storageService.saveDefaultRecoveryPolicy(val);
+    notifyListeners();
+  }
+
+  void applyConfig(CaptureConfig config) {
+    final match = _interfaces.where((i) => i.index == config.interface.index);
+    if (match.isNotEmpty) {
+      _selectedInterface = match.first;
+    } else {
+      _selectedInterface = config.interface;
+    }
+
+    _outputDirectory = config.outputDirectory;
+    _filePrefix = config.filePrefix;
+    _createSubfolder = config.createSubfolder;
+    _mode = config.mode;
+    _durationMinutes = config.durationMinutes;
+    _durationHours = config.durationHours;
+    _ringRotateMinutes = config.ringRotateMinutes;
+    _ringRotateFilesizeMb = config.ringRotateFilesizeMb;
+    _ringFilesCount = config.ringFilesCount;
+    _ringRotateBySize = config.ringRotateBySize;
+    _packetCountLimit = config.packetCountLimit;
+    _captureFilter = config.captureFilter;
+    _snaplen = config.snaplen;
+    _promiscuous = config.promiscuous;
+    _recoveryPolicy = config.recoveryPolicy;
+    _activePresetId = null;
+    notifyListeners();
+  }
+
+  Future<void> resumeInterruptedCapture() async {
+    if (_interruptedSession == null) return;
+    final session = _interruptedSession!;
+    _interruptedSession = null;
+    if (session.config != null) {
+      applyConfig(session.config!);
+    }
+    notifyListeners();
+    await startCapture();
+  }
+
+  void loadInterruptedSettings() {
+    if (_interruptedSession == null) return;
+    final session = _interruptedSession!;
+    _interruptedSession = null;
+    if (session.config != null) {
+      applyConfig(session.config!);
+      _statusMessage = 'Loaded settings from previous interrupted session.';
+    }
+    notifyListeners();
+  }
+
+  void dismissInterruptedSession() {
+    _interruptedSession = null;
+    notifyListeners();
+  }
+
   void setOutputDirectory(String dir) {
     _outputDirectory = dir;
     _storageService.saveDefaultOutputDirectory(dir);
@@ -349,6 +454,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       captureFilter: _captureFilter,
       snaplen: _snaplen,
       promiscuous: _promiscuous,
+      recoveryPolicy: _recoveryPolicy,
     );
   }
 
@@ -413,6 +519,8 @@ class TSharkCaptureViewModel extends ChangeNotifier {
         filter: config.captureFilter,
         snaplen: config.snaplen,
         isDetached: _runDetached,
+        config: config,
+        recoveryPolicy: config.recoveryPolicy,
       );
 
       await _storageService.saveActiveSession(_activeSession!);
