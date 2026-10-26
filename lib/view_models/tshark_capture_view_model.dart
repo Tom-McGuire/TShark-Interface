@@ -7,7 +7,9 @@ import '../models/capture_config.dart';
 import '../models/capture_history_item.dart';
 import '../models/capture_interface.dart';
 import '../models/capture_preset.dart';
+import '../models/remote_host.dart';
 import '../services/capture_storage_service.dart';
+import '../services/remote_ssh_service.dart';
 import '../services/system_service.dart';
 import '../services/tshark_service.dart';
 
@@ -15,18 +17,24 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   TSharkCaptureViewModel({
     TSharkService? tsharkService,
     CaptureStorageService? storageService,
+    RemoteSshService? remoteSshService,
   })  : _tsharkService = tsharkService ?? TSharkService(),
-        _storageService = storageService ?? CaptureStorageService() {
+        _storageService = storageService ?? CaptureStorageService(),
+        _remoteSshService =
+            remoteSshService ?? RemoteSshService(tsharkService: tsharkService) {
     init();
   }
 
   final TSharkService _tsharkService;
   final CaptureStorageService _storageService;
+  final RemoteSshService _remoteSshService;
 
-  // Engine state
+  // Engine state (Local)
   String? _tsharkPath;
   String? get tsharkPath => _tsharkPath;
-  bool get hasTShark => _tsharkPath != null && _tsharkPath!.isNotEmpty;
+  bool get hasTShark =>
+      isRemoteTarget || (_tsharkPath != null && _tsharkPath!.isNotEmpty);
+  bool get hasLocalTShark => _tsharkPath != null && _tsharkPath!.isNotEmpty;
 
   String? _tsharkVersion;
   String? get tsharkVersion => _tsharkVersion;
@@ -40,7 +48,15 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   String? _statusMessage;
   String? get statusMessage => _statusMessage;
 
-  // Interfaces
+  // Remote Hosts & Target Selection
+  List<RemoteHost> _remoteHosts = [];
+  List<RemoteHost> get remoteHosts => _remoteHosts;
+
+  RemoteHost? _selectedRemoteHost;
+  RemoteHost? get selectedRemoteHost => _selectedRemoteHost;
+  bool get isRemoteTarget => _selectedRemoteHost != null;
+
+  // Interfaces (for currently selected target: Local or Remote)
   List<CaptureInterface> _interfaces = [];
   List<CaptureInterface> get interfaces => _interfaces;
 
@@ -95,6 +111,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   bool _promiscuous = true;
   bool get promiscuous => _promiscuous;
 
+  String _localOutputDirectory = '';
   String _outputDirectory = '';
   String get outputDirectory => _outputDirectory;
 
@@ -107,16 +124,50 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   bool _runDetached = false;
   bool get runDetached => _runDetached;
 
-  // Active session
-  ActiveCaptureSession? _activeSession;
-  ActiveCaptureSession? get activeSession => _activeSession;
-  bool get isCapturing => _activeSession != null;
+  // Active sessions (Local + Multi-Remote)
+  ActiveCaptureSession? _localActiveSession;
+  ActiveCaptureSession? get localActiveSession => _localActiveSession;
+
+  final Map<String, ActiveCaptureSession> _remoteSessions = {};
+  Map<String, ActiveCaptureSession> get remoteSessions =>
+      Map.unmodifiable(_remoteSessions);
+
+  final Set<String> _pollingRemoteHostIds = {};
+  final Set<String> _stoppingRemoteHostIds = {};
+
+  bool isStoppingRemote(String hostId) => _stoppingRemoteHostIds.contains(hostId);
+  bool isPollingRemote(String hostId) => _pollingRemoteHostIds.contains(hostId);
+
+  List<ActiveCaptureSession> get unreachableRemoteSessions =>
+      _remoteSessions.values.where((s) => s.isUnreachable).toList();
+
+  int get totalActiveCapturesCount =>
+      (_localActiveSession != null ? 1 : 0) +
+      _remoteSessions.values.where((s) => !s.isUnreachable).length;
+
+  /// Returns the active session for the currently selected Target Machine (Local or Remote).
+  ActiveCaptureSession? get activeSession {
+    if (isRemoteTarget) {
+      return _remoteSessions[_selectedRemoteHost!.id];
+    }
+    return _localActiveSession;
+  }
+
+  bool get isCapturing {
+    final s = activeSession;
+    return s != null && !s.isUnreachable;
+  }
 
   Duration _elapsed = Duration.zero;
-  Duration get elapsed => _elapsed;
+  Duration get elapsed => activeSession?.elapsed ?? _elapsed;
 
   int _currentCaptureSizeBytes = 0;
-  int get currentCaptureSizeBytes => _currentCaptureSizeBytes;
+  int get currentCaptureSizeBytes {
+    if (isRemoteTarget) {
+      return activeSession?.lastKnownSizeBytes ?? 0;
+    }
+    return _currentCaptureSizeBytes;
+  }
 
   Timer? _tickerTimer;
   Process? _activeProcess;
@@ -145,42 +196,28 @@ class TSharkCaptureViewModel extends ChangeNotifier {
         _interfaces = await _tsharkService.getInterfaces(_tsharkPath!);
       }
 
-      // Load default output directory
-      _outputDirectory = (await _storageService.loadDefaultOutputDirectory()) ?? '';
+      // Load default local output directory
+      _localOutputDirectory =
+          (await _storageService.loadDefaultOutputDirectory()) ?? '';
+      _outputDirectory = _localOutputDirectory;
 
-      // Match last interface by device name first (stable across reboots), then index
-      final lastName = await _storageService.loadLastInterfaceName();
-      final lastIdx = await _storageService.loadLastInterfaceIndex();
-      if (lastName != null && _interfaces.isNotEmpty) {
-        final match = _interfaces.where((i) => i.name == lastName);
-        if (match.isNotEmpty) {
-          _selectedInterface = match.first;
-        }
-      }
-      if (_selectedInterface == null && lastIdx != null && _interfaces.isNotEmpty) {
-        final match = _interfaces.where((i) => i.index == lastIdx);
-        if (match.isNotEmpty) {
-          _selectedInterface = match.first;
-        }
-      }
-      if (_selectedInterface == null && _interfaces.isNotEmpty) {
-        // Prefer Wi-Fi or Ethernet if available
-        final preferred = _interfaces.firstWhere(
-          (i) =>
-              (i.friendlyName?.toLowerCase().contains('wi-fi') ?? false) ||
-              (i.friendlyName?.toLowerCase().contains('ethernet') ?? false),
-          orElse: () => _interfaces.first,
-        );
-        _selectedInterface = preferred;
-      }
+      // Match last local interface by device name first (stable across reboots), then index
+      await _selectPreferredLocalInterface();
 
-      // Load presets & history
-      _presets = [...CapturePreset.builtInPresets, ...await _storageService.loadCustomPresets()];
+      // Load presets, history, and remote hosts
+      _presets = [
+        ...CapturePreset.builtInPresets,
+        ...await _storageService.loadCustomPresets(),
+      ];
       _history = await _storageService.loadHistory();
       _recoveryPolicy = await _storageService.loadDefaultRecoveryPolicy();
+      _remoteHosts = await _storageService.loadRemoteHosts();
 
-      // Check if session was already running in background
+      // Check if local session was already running in background
       await checkExistingSession();
+
+      // Check any stored ongoing remote sessions over SSH
+      unawaited(checkExistingRemoteSessions());
     } catch (e) {
       _errorMessage = 'Init failed: $e';
     } finally {
@@ -189,22 +226,245 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     }
   }
 
+  Future<void> _selectPreferredLocalInterface() async {
+    _selectedInterface = null;
+    final lastName = await _storageService.loadLastInterfaceName();
+    final lastIdx = await _storageService.loadLastInterfaceIndex();
+    if (lastName != null && _interfaces.isNotEmpty) {
+      final match = _interfaces.where((i) => i.name == lastName);
+      if (match.isNotEmpty) {
+        _selectedInterface = match.first;
+      }
+    }
+    if (_selectedInterface == null && lastIdx != null && _interfaces.isNotEmpty) {
+      final match = _interfaces.where((i) => i.index == lastIdx);
+      if (match.isNotEmpty) {
+        _selectedInterface = match.first;
+      }
+    }
+    if (_selectedInterface == null && _interfaces.isNotEmpty) {
+      final preferred = _interfaces.firstWhere(
+        (i) =>
+            (i.friendlyName?.toLowerCase().contains('wi-fi') ?? false) ||
+            (i.friendlyName?.toLowerCase().contains('ethernet') ?? false) ||
+            i.name.toLowerCase().startsWith('eth') ||
+            i.name.toLowerCase().startsWith('en'),
+        orElse: () => _interfaces.first,
+      );
+      _selectedInterface = preferred;
+    }
+  }
+
+  /// Switches the target machine between Local Machine (`null`) and a saved [RemoteHost].
+  Future<void> selectTargetHost(RemoteHost? host) async {
+    if (_selectedRemoteHost == host) return;
+    _selectedRemoteHost = host;
+    _errorMessage = null;
+    _selectedInterface = null;
+    _interfaces = [];
+
+    await _storageService.saveLastSelectedTargetId(host?.id);
+
+    if (host == null) {
+      _outputDirectory = _localOutputDirectory;
+      notifyListeners();
+      await refreshInterfaces();
+    } else {
+      _outputDirectory = host.defaultOutputDirectory;
+      notifyListeners();
+      await refreshInterfaces();
+    }
+  }
+
   Future<void> refreshInterfaces() async {
-    if (_tsharkPath == null) return;
     _isLoading = true;
+    _errorMessage = null;
     notifyListeners();
 
     try {
-      _interfaces = await _tsharkService.getInterfaces(_tsharkPath!);
-      if (_interfaces.isNotEmpty && _selectedInterface == null) {
-        _selectedInterface = _interfaces.first;
+      if (isRemoteTarget) {
+        final host = _selectedRemoteHost!;
+        _interfaces = await _remoteSshService.getRemoteInterfaces(host);
+        if (_interfaces.isNotEmpty) {
+          // Prefer eth0 / ens / wlan / Ethernet over loopback
+          _selectedInterface = _interfaces.firstWhere(
+            (i) =>
+                !i.name.toLowerCase().contains('loopback') &&
+                i.name.toLowerCase() != 'lo' &&
+                !i.name.toLowerCase().contains('etwdump'),
+            orElse: () => _interfaces.first,
+          );
+        }
+      } else {
+        if (_tsharkPath == null) {
+          _interfaces = [];
+          return;
+        }
+        _interfaces = await _tsharkService.getInterfaces(_tsharkPath!);
+        if (_interfaces.isNotEmpty && _selectedInterface == null) {
+          await _selectPreferredLocalInterface();
+        }
       }
     } catch (e) {
-      _errorMessage = 'Failed to refresh interfaces: $e';
+      _errorMessage = isRemoteTarget
+          ? 'Failed to query interfaces on ${_selectedRemoteHost!.name}: $e'
+          : 'Failed to refresh interfaces: $e';
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  // Remote Host CRUD & Testing
+  Future<RemoteConnectionTestResult> testRemoteHostConnection(
+    RemoteHost host,
+  ) async {
+    final result = await _remoteSshService.testConnection(host);
+    // If host already exists in saved list, update its cached reachability and OS
+    final idx = _remoteHosts.indexWhere((h) => h.id == host.id);
+    if (idx >= 0) {
+      final updated = _remoteHosts[idx].copyWith(
+        osType: _remoteHosts[idx].osType == RemoteOsType.auto
+            ? result.detectedOs
+            : _remoteHosts[idx].osType,
+        detectedTSharkVersion: result.tsharkVersion,
+        isReachable: result.success,
+      );
+      _remoteHosts[idx] = updated;
+      await _storageService.saveRemoteHost(updated);
+      if (_selectedRemoteHost?.id == updated.id) {
+        _selectedRemoteHost = updated;
+      }
+      notifyListeners();
+    }
+    return result;
+  }
+
+  Future<void> saveRemoteHost(RemoteHost host) async {
+    await _storageService.saveRemoteHost(host);
+    _remoteHosts = await _storageService.loadRemoteHosts();
+    if (_selectedRemoteHost?.id == host.id) {
+      _selectedRemoteHost = host;
+    }
+    notifyListeners();
+  }
+
+  Future<void> deleteRemoteHost(String id) async {
+    if (_selectedRemoteHost?.id == id) {
+      await selectTargetHost(null);
+    }
+    _remoteSessions.remove(id);
+    await _storageService.removeRemoteSession(id);
+    await _storageService.deleteRemoteHost(id);
+    _remoteHosts = await _storageService.loadRemoteHosts();
+    notifyListeners();
+  }
+
+  /// Checks all stored remote sessions on app startup and reconnects or flags unreachable hosts.
+  Future<void> checkExistingRemoteSessions() async {
+    final stored = await _storageService.loadRemoteSessions();
+    if (stored.isEmpty) return;
+
+    for (final session in stored) {
+      if (session.remoteHostId != null) {
+        _remoteSessions[session.remoteHostId!] = session;
+      }
+    }
+    _ensureTickerRunning();
+    notifyListeners();
+
+    // Query each remote session concurrently
+    await Future.wait(
+      stored
+          .where((s) => s.remoteHostId != null)
+          .map((s) => refreshRemoteSessionStatus(s.remoteHostId!, isStartupCheck: true)),
+    );
+  }
+
+  /// Polls a single remote host over SSH to update its active session status.
+  Future<void> refreshRemoteSessionStatus(
+    String hostId, {
+    bool isStartupCheck = false,
+  }) async {
+    if (_pollingRemoteHostIds.contains(hostId)) return;
+    final session = _remoteSessions[hostId];
+    if (session == null) return;
+
+    final hostMatch = _remoteHosts.where((h) => h.id == hostId);
+    if (hostMatch.isEmpty) {
+      // Host profile was deleted; clean up orphaned session
+      await clearRemoteSession(hostId);
+      return;
+    }
+    final host = hostMatch.first;
+
+    _pollingRemoteHostIds.add(hostId);
+    notifyListeners();
+
+    try {
+      final check = await _remoteSshService.checkRemoteSessionStatus(host, session);
+      if (!check.isReachable) {
+        // Host is offline / unreachable: flag it so user can Retry or Clear/Forget
+        final updated = session.copyWith(
+          isUnreachable: true,
+          unreachableReason:
+              'Host ${host.host} is unreachable (may be powered off or disconnected).',
+        );
+        _remoteSessions[hostId] = updated;
+      } else if (check.isAlive) {
+        // Remote capture is still actively running!
+        final updated = session.copyWith(
+          isUnreachable: false,
+          unreachableReason: null,
+          lastKnownSizeBytes: check.sizeBytes,
+        );
+        _remoteSessions[hostId] = updated;
+        await _storageService.saveRemoteSession(updated);
+        if (isStartupCheck) {
+          _statusMessage =
+              'Reconnected to ongoing remote capture on ${host.name} (PID ${session.pid}).';
+        }
+      } else {
+        // SSH succeeded, and PID is no longer running -> Capture finished!
+        if (check.sizeBytes > 0) {
+          final historyItem = CaptureHistoryItem(
+            filePath: session.targetFilePath,
+            fileName: p.basename(session.targetFilePath),
+            timestamp: session.startedAt,
+            fileSizeBytes: check.sizeBytes,
+            interfaceName: '[${host.name}] ${session.interfaceName}',
+            filter: session.filter,
+          );
+          await _storageService.addHistoryItem(historyItem);
+          _history = await _storageService.loadHistory();
+        }
+        _remoteSessions.remove(hostId);
+        await _storageService.removeRemoteSession(hostId);
+        _statusMessage = 'Remote capture on ${host.name} finished.';
+      }
+    } finally {
+      _pollingRemoteHostIds.remove(hostId);
+      _ensureTickerRunning();
+      notifyListeners();
+    }
+  }
+
+  /// Refreshes status for all saved remote hosts that have a tracked session.
+  Future<void> refreshAllRemoteSessions() async {
+    final ids = _remoteSessions.keys.toList();
+    await Future.wait(ids.map((id) => refreshRemoteSessionStatus(id)));
+  }
+
+  /// Clears a stored remote session from local memory without needing SSH connectivity.
+  Future<void> clearRemoteSession(String hostId) async {
+    final removed = _remoteSessions.remove(hostId);
+    await _storageService.removeRemoteSession(hostId);
+    if (removed != null) {
+      _statusMessage =
+          'Cleared stored session for ${removed.remoteHostName ?? "remote host"} from local memory.';
+    }
+    _ensureTickerRunning();
+    notifyListeners();
   }
 
   Future<void> setCustomTSharkPath(String path) async {
@@ -228,10 +488,14 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
     if (_tsharkPath != null) {
       _tsharkVersion = await _tsharkService.getVersion(_tsharkPath!);
-      await refreshInterfaces();
+      if (!isRemoteTarget) {
+        await refreshInterfaces();
+      }
     } else {
       _tsharkVersion = null;
-      _interfaces = [];
+      if (!isRemoteTarget) {
+        _interfaces = [];
+      }
     }
     notifyListeners();
   }
@@ -242,16 +506,17 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
     final isAlive = await _tsharkService.isProcessAlive(session.pid);
     if (isAlive) {
-      _activeSession = session;
+      _localActiveSession = session;
       _statusMessage = 'Reconnected to background capture (PID ${session.pid}).';
-      _startSessionTicker();
+      _ensureTickerRunning();
     } else {
       // Process is dead: system rebooted, crashed, or terminated unexpectedly.
       // 1. Record interrupted capture in history if target file was created
       try {
         String recordedFilePath = session.targetFilePath;
         if (session.mode == CaptureMode.ringBuffer) {
-          final latest = await _tsharkService.findLatestPcapFile(session.outputDirectory);
+          final latest =
+              await _tsharkService.findLatestPcapFile(session.outputDirectory);
           if (latest != null) {
             recordedFilePath = latest;
           }
@@ -273,7 +538,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
       // 2. Clear previous active session file
       await _storageService.clearActiveSession();
-      _activeSession = null;
+      _localActiveSession = null;
 
       // 3. Handle recovery policy
       if (session.recoveryPolicy.isAuto) {
@@ -281,7 +546,6 @@ class TSharkCaptureViewModel extends ChangeNotifier {
           applyConfig(session.config!);
           _statusMessage =
               'Auto-restored capture after system reboot on ${session.config!.interface.displayName}.';
-          // Start fresh capture automatically
           unawaited(startCapture());
         }
       } else if (session.recoveryPolicy.isPrompt) {
@@ -294,7 +558,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   // Configuration setters
   void setSelectedInterface(CaptureInterface? iface) {
     _selectedInterface = iface;
-    if (iface != null) {
+    if (iface != null && !isRemoteTarget) {
       _storageService.saveLastInterfaceName(iface.name);
       _storageService.saveLastInterfaceIndex(iface.index);
     }
@@ -373,7 +637,8 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     if (matchName.isNotEmpty) {
       _selectedInterface = matchName.first;
     } else {
-      final matchIdx = _interfaces.where((i) => i.index == config.interface.index);
+      final matchIdx =
+          _interfaces.where((i) => i.index == config.interface.index);
       if (matchIdx.isNotEmpty) {
         _selectedInterface = matchIdx.first;
       } else {
@@ -429,7 +694,10 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
   void setOutputDirectory(String dir) {
     _outputDirectory = dir;
-    _storageService.saveDefaultOutputDirectory(dir);
+    if (!isRemoteTarget) {
+      _localOutputDirectory = dir;
+      _storageService.saveDefaultOutputDirectory(dir);
+    }
     notifyListeners();
   }
 
@@ -493,11 +761,41 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   }
 
   String get previewCommandLine {
-    if (_tsharkPath == null || _selectedInterface == null) {
+    if (_selectedInterface == null) {
       return '# Select a capture interface to preview the command';
     }
 
-    final dummyFilename = '${_filePrefix.isNotEmpty ? _filePrefix : 'capture'}_YYYYMMDD_HHMMSS.pcapng';
+    final dummyFilename =
+        '${_filePrefix.isNotEmpty ? _filePrefix : 'capture'}_YYYYMMDD_HHMMSS.pcapng';
+
+    if (isRemoteTarget) {
+      final host = _selectedRemoteHost!;
+      final baseDir = _outputDirectory.isNotEmpty
+          ? _outputDirectory
+          : host.defaultOutputDirectory;
+      final subDir = _createSubfolder
+          ? RemoteSshService.joinRemotePath(
+              host.osType,
+              baseDir,
+              'Capture_YYYYMMDD_HHMMSS',
+            )
+          : baseDir;
+      final remoteOutPath = RemoteSshService.joinRemotePath(
+        host.osType,
+        subDir,
+        dummyFilename,
+      );
+      return _remoteSshService.buildRemoteDisplayCommandLine(
+        host: host,
+        config: currentConfig,
+        fullRemoteOutputPath: remoteOutPath,
+      );
+    }
+
+    if (_tsharkPath == null) {
+      return '# TShark executable not detected on local machine';
+    }
+
     final previewOutPath = _createSubfolder
         ? p.join(_outputDirectory, 'Capture_YYYYMMDD_HHMMSS', dummyFilename)
         : p.join(_outputDirectory, dummyFilename);
@@ -510,12 +808,6 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   }
 
   Future<bool> startCapture() async {
-    if (!hasTShark) {
-      _errorMessage = 'TShark executable was not detected on this system.';
-      notifyListeners();
-      return false;
-    }
-
     if (_selectedInterface == null) {
       _errorMessage = 'Please choose a network interface to capture.';
       notifyListeners();
@@ -523,7 +815,17 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     }
 
     if (_outputDirectory.isEmpty) {
-      _errorMessage = 'Please select a destination storage directory.';
+      _errorMessage = 'Please specify a destination storage directory.';
+      notifyListeners();
+      return false;
+    }
+
+    if (isRemoteTarget) {
+      return _startRemoteCapture(_selectedRemoteHost!);
+    }
+
+    if (!hasLocalTShark) {
+      _errorMessage = 'TShark executable was not detected on this system.';
       notifyListeners();
       return false;
     }
@@ -544,7 +846,8 @@ class TSharkCaptureViewModel extends ChangeNotifier {
             final errDetails = recent.isNotEmpty
                 ? ': ${recent.last}'
                 : ' (exit code $exitCode)';
-            _errorMessage = 'TShark capture process exited unexpectedly$errDetails';
+            _errorMessage =
+                'TShark capture process exited unexpectedly$errDetails';
             notifyListeners();
           }
         },
@@ -552,7 +855,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
       _activeProcess = result.process;
 
-      _activeSession = ActiveCaptureSession(
+      _localActiveSession = ActiveCaptureSession(
         pid: result.pid,
         startedAt: DateTime.now(),
         outputDirectory: result.targetDirectory,
@@ -567,8 +870,8 @@ class TSharkCaptureViewModel extends ChangeNotifier {
         recoveryPolicy: config.recoveryPolicy,
       );
 
-      await _storageService.saveActiveSession(_activeSession!);
-      _startSessionTicker();
+      await _storageService.saveActiveSession(_localActiveSession!);
+      _ensureTickerRunning();
 
       _isLoading = false;
       notifyListeners();
@@ -581,14 +884,66 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     }
   }
 
+  Future<bool> _startRemoteCapture(RemoteHost host) async {
+    _errorMessage = null;
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final config = currentConfig;
+      final result = await _remoteSshService.startRemoteCapture(
+        host: host,
+        config: config,
+      );
+
+      final session = ActiveCaptureSession(
+        pid: result.pid,
+        startedAt: DateTime.now(),
+        outputDirectory: result.targetDirectory,
+        targetFilePath: result.targetFilePath,
+        mode: config.mode,
+        interfaceName: config.interface.displayName,
+        commandLine: result.commandLine,
+        filter: config.captureFilter,
+        snaplen: config.snaplen,
+        isDetached: true,
+        config: config,
+        recoveryPolicy: config.recoveryPolicy,
+        isRemote: true,
+        remoteHostId: host.id,
+        remoteHostName: host.displayLabel,
+      );
+
+      _remoteSessions[host.id] = session;
+      await _storageService.saveRemoteSession(session);
+      _ensureTickerRunning();
+
+      _statusMessage =
+          'Started remote capture on ${host.name} (PID ${result.pid}).';
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _errorMessage = 'Failed to start remote capture on ${host.name}: $e';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<void> stopCapture() async {
-    if (_isStopping || _activeSession == null) return;
+    if (isRemoteTarget && _selectedRemoteHost != null) {
+      await stopRemoteCapture(_selectedRemoteHost!.id);
+      return;
+    }
+
+    if (_isStopping || _localActiveSession == null) return;
     _isStopping = true;
     _isLoading = true;
     notifyListeners();
 
     try {
-      final session = _activeSession!;
+      final session = _localActiveSession!;
       await _tsharkService.stopCapture(session.pid);
 
       if (_activeProcess != null) {
@@ -599,7 +954,8 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       // In ring-buffer mode, resolve the actual created file
       String recordedFilePath = session.targetFilePath;
       if (session.mode == CaptureMode.ringBuffer) {
-        final latest = await _tsharkService.findLatestPcapFile(session.outputDirectory);
+        final latest =
+            await _tsharkService.findLatestPcapFile(session.outputDirectory);
         if (latest != null) {
           recordedFilePath = latest;
         }
@@ -621,8 +977,9 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       }
 
       await _storageService.clearActiveSession();
-      _activeSession = null;
-      _stopSessionTicker();
+      _localActiveSession = null;
+      _currentCaptureSizeBytes = 0;
+      _ensureTickerRunning();
       _statusMessage = 'Capture saved successfully.';
     } catch (e) {
       _errorMessage = 'Error stopping capture: $e';
@@ -633,40 +990,116 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     }
   }
 
-  void _startSessionTicker() {
-    _stopSessionTicker();
-    _elapsed = _activeSession?.elapsed ?? Duration.zero;
+  Future<void> stopRemoteCapture(String hostId) async {
+    if (_stoppingRemoteHostIds.contains(hostId)) return;
+    final session = _remoteSessions[hostId];
+    if (session == null) return;
+
+    final hostMatch = _remoteHosts.where((h) => h.id == hostId);
+    if (hostMatch.isEmpty) {
+      await clearRemoteSession(hostId);
+      return;
+    }
+    final host = hostMatch.first;
+
+    _stoppingRemoteHostIds.add(hostId);
+    if (_selectedRemoteHost?.id == hostId) {
+      _isLoading = true;
+    }
+    notifyListeners();
+
+    try {
+      await _remoteSshService.stopRemoteCapture(host, session.pid);
+      final check = await _remoteSshService.checkRemoteSessionStatus(host, session);
+      final finalSize = check.sizeBytes > 0 ? check.sizeBytes : session.lastKnownSizeBytes;
+
+      final historyItem = CaptureHistoryItem(
+        filePath: session.targetFilePath,
+        fileName: p.basename(session.targetFilePath),
+        timestamp: session.startedAt,
+        fileSizeBytes: finalSize,
+        interfaceName: '[${host.name}] ${session.interfaceName}',
+        filter: session.filter,
+      );
+      await _storageService.addHistoryItem(historyItem);
+      _history = await _storageService.loadHistory();
+
+      _remoteSessions.remove(hostId);
+      await _storageService.removeRemoteSession(hostId);
+      _ensureTickerRunning();
+      _statusMessage =
+          'Remote capture stopped on ${host.name} (saved to ${session.targetFilePath}).';
+    } catch (e) {
+      _errorMessage = 'Error stopping remote capture on ${host.name}: $e';
+    } finally {
+      _stoppingRemoteHostIds.remove(hostId);
+      if (_selectedRemoteHost?.id == hostId) {
+        _isLoading = false;
+      }
+      notifyListeners();
+    }
+  }
+
+  void _ensureTickerRunning() {
+    final hasAnyActive =
+        _localActiveSession != null || _remoteSessions.isNotEmpty;
+    if (!hasAnyActive) {
+      _stopSessionTicker();
+      return;
+    }
+    if (_tickerTimer != null && _tickerTimer!.isActive) {
+      return;
+    }
 
     _tickerTimer = Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (_activeSession == null) {
-        timer.cancel();
+      if (_localActiveSession == null && _remoteSessions.isEmpty) {
+        _stopSessionTicker();
         return;
       }
 
-      _elapsed = _activeSession!.elapsed;
+      if (_localActiveSession != null) {
+        _elapsed = _localActiveSession!.elapsed;
+      }
 
-      // Every 3 seconds, poll capture file size and verify process
-      if (timer.tick % 3 == 0) {
-        if (_activeSession!.mode == CaptureMode.ringBuffer) {
-          final latest = await _tsharkService.findLatestPcapFile(_activeSession!.outputDirectory);
+      // Every 3 seconds, poll local capture file size and verify process
+      if (_localActiveSession != null && timer.tick % 3 == 0) {
+        if (_localActiveSession!.mode == CaptureMode.ringBuffer) {
+          final latest = await _tsharkService.findLatestPcapFile(
+            _localActiveSession!.outputDirectory,
+          );
           if (latest != null) {
-            _currentCaptureSizeBytes = await _tsharkService.getCaptureSizeBytes(latest);
-          } else {
             _currentCaptureSizeBytes =
-                await _tsharkService.getCaptureSizeBytes(_activeSession!.targetFilePath);
+                await _tsharkService.getCaptureSizeBytes(latest);
+          } else {
+            _currentCaptureSizeBytes = await _tsharkService.getCaptureSizeBytes(
+              _localActiveSession!.targetFilePath,
+            );
           }
         } else {
-          _currentCaptureSizeBytes =
-              await _tsharkService.getCaptureSizeBytes(_activeSession!.targetFilePath);
+          _currentCaptureSizeBytes = await _tsharkService.getCaptureSizeBytes(
+            _localActiveSession!.targetFilePath,
+          );
         }
 
-        // Check if process finished automatically (e.g. timed or packet count reached)
-        final alive = await _tsharkService.isProcessAlive(_activeSession!.pid);
+        final alive =
+            await _tsharkService.isProcessAlive(_localActiveSession!.pid);
         if (!alive) {
           await stopCapture();
           return;
         }
       }
+
+      // Every 5 seconds, poll active (reachable) remote sessions over SSH
+      if (_remoteSessions.isNotEmpty && timer.tick % 5 == 0) {
+        final activeHostIds = _remoteSessions.entries
+            .where((e) => !e.value.isUnreachable)
+            .map((e) => e.key)
+            .toList();
+        for (final hostId in activeHostIds) {
+          unawaited(refreshRemoteSessionStatus(hostId));
+        }
+      }
+
       notifyListeners();
     });
   }
@@ -679,7 +1112,8 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   }
 
   Future<void> openActiveDirectory() async {
-    final path = _activeSession?.outputDirectory ?? _outputDirectory;
+    if (isRemoteTarget) return;
+    final path = _localActiveSession?.outputDirectory ?? _outputDirectory;
     if (path.isNotEmpty) {
       await SystemService.openFolder(path);
     }

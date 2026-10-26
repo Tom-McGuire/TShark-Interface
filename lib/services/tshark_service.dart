@@ -126,6 +126,39 @@ class TSharkService {
     return null;
   }
 
+  /// Parses raw `tshark -D` output into a list of [CaptureInterface] objects.
+  static List<CaptureInterface> parseInterfacesOutput(String rawOutput) {
+    final lines = rawOutput.split(RegExp(r'[\r\n]+'));
+    final interfaces = <CaptureInterface>[];
+
+    // Format:
+    // 1. \Device\NPF_{...} (Wi-Fi)
+    // 2. eth0
+    // 3. any (Pseudo-device that captures on all interfaces) [Linux]
+    final lineRegex = RegExp(r'^(\d+)\.\s+(.*?)(?:\s+\((.*?)\))?$');
+
+    for (final rawLine in lines) {
+      final line = rawLine.trim();
+      if (line.isEmpty) continue;
+
+      final match = lineRegex.firstMatch(line);
+      if (match != null) {
+        final index = match.group(1)!;
+        final name = match.group(2)!.trim();
+        final friendly = match.group(3)?.trim();
+        interfaces.add(
+          CaptureInterface(
+            index: index,
+            name: name,
+            friendlyName: (friendly != null && friendly.isNotEmpty) ? friendly : null,
+          ),
+        );
+      }
+    }
+
+    return interfaces;
+  }
+
   /// Queries system capture interfaces using `tshark -D`.
   Future<List<CaptureInterface>> getInterfaces(String tsharkPath) async {
     try {
@@ -135,34 +168,7 @@ class TSharkService {
         return [];
       }
 
-      final lines = res.stdout.toString().split(RegExp(r'[\r\n]+'));
-      final interfaces = <CaptureInterface>[];
-
-      // Format:
-      // 1. \Device\NPF_{...} (Wi-Fi)
-      // 2. eth0
-      final lineRegex = RegExp(r'^(\d+)\.\s+(.*?)(?:\s+\((.*?)\))?$');
-
-      for (final rawLine in lines) {
-        final line = rawLine.trim();
-        if (line.isEmpty) continue;
-
-        final match = lineRegex.firstMatch(line);
-        if (match != null) {
-          final index = match.group(1)!;
-          final name = match.group(2)!.trim();
-          final friendly = match.group(3)?.trim();
-          interfaces.add(
-            CaptureInterface(
-              index: index,
-              name: name,
-              friendlyName: (friendly != null && friendly.isNotEmpty) ? friendly : null,
-            ),
-          );
-        }
-      }
-
-      return interfaces;
+      return parseInterfacesOutput(res.stdout.toString());
     } catch (e) {
       debugPrint('getInterfaces error: $e');
       return [];

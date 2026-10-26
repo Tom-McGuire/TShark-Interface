@@ -8,6 +8,7 @@ import '../models/active_capture_session.dart';
 import '../models/capture_config.dart';
 import '../models/capture_history_item.dart';
 import '../models/capture_preset.dart';
+import '../models/remote_host.dart';
 
 class CaptureStorageService {
   CaptureStorageService({this.baseDirectory});
@@ -350,5 +351,120 @@ class CaptureStorageService {
     } catch (e, st) {
       debugPrint('Failed to delete custom preset: $e\n$st');
     }
+  }
+
+  // Remote Hosts
+  Future<List<RemoteHost>> loadRemoteHosts() async {
+    try {
+      final file = await _getFile('remote_hosts.json');
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        if (content.trim().isNotEmpty) {
+          final list = jsonDecode(content) as List<dynamic>;
+          return list
+              .map((e) => RemoteHost.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+      }
+    } catch (e, st) {
+      debugPrint('Failed to load remote hosts: $e\n$st');
+    }
+    return [];
+  }
+
+  Future<void> saveRemoteHost(RemoteHost host) async {
+    try {
+      final current = await loadRemoteHosts();
+      final idx = current.indexWhere((h) => h.id == host.id);
+      if (idx >= 0) {
+        current[idx] = host;
+      } else {
+        current.add(host);
+      }
+      final file = await _getFile('remote_hosts.json');
+      await _safeWriteJson(
+        file,
+        current.map((e) => e.toJson()).toList(),
+      );
+    } catch (e, st) {
+      debugPrint('Failed to save remote host: $e\n$st');
+    }
+  }
+
+  Future<void> deleteRemoteHost(String id) async {
+    try {
+      final current = await loadRemoteHosts();
+      current.removeWhere((h) => h.id == id);
+      final file = await _getFile('remote_hosts.json');
+      await _safeWriteJson(
+        file,
+        current.map((e) => e.toJson()).toList(),
+      );
+    } catch (e, st) {
+      debugPrint('Failed to delete remote host: $e\n$st');
+    }
+  }
+
+  // Active Remote Sessions (keyed by remoteHostId)
+  Future<List<ActiveCaptureSession>> loadRemoteSessions() async {
+    try {
+      final file = await _getFile('remote_sessions.json');
+      if (await file.exists()) {
+        final content = await file.readAsString();
+        if (content.trim().isNotEmpty) {
+          final list = jsonDecode(content) as List<dynamic>;
+          return list
+              .map((e) => ActiveCaptureSession.fromJson(e as Map<String, dynamic>))
+              .toList();
+        }
+      }
+    } catch (e, st) {
+      debugPrint('Failed to load remote sessions: $e\n$st');
+    }
+    return [];
+  }
+
+  Future<void> saveRemoteSession(ActiveCaptureSession session) async {
+    try {
+      final current = await loadRemoteSessions();
+      current.removeWhere(
+        (s) => s.remoteHostId == session.remoteHostId && session.remoteHostId != null,
+      );
+      current.add(session);
+      final file = await _getFile('remote_sessions.json');
+      await _safeWriteJson(
+        file,
+        current.map((e) => e.toJson()).toList(),
+      );
+    } catch (e, st) {
+      debugPrint('Failed to save remote session: $e\n$st');
+    }
+  }
+
+  Future<void> removeRemoteSession(String hostId) async {
+    try {
+      final current = await loadRemoteSessions();
+      current.removeWhere((s) => s.remoteHostId == hostId);
+      final file = await _getFile('remote_sessions.json');
+      await _safeWriteJson(
+        file,
+        current.map((e) => e.toJson()).toList(),
+      );
+    } catch (e, st) {
+      debugPrint('Failed to remove remote session: $e\n$st');
+    }
+  }
+
+  Future<void> saveLastSelectedTargetId(String? hostId) async {
+    return _serializePrefOp(() async {
+      final prefs = await _loadPrefs();
+      prefs['lastSelectedTargetId'] = hostId;
+      await _savePrefs(prefs);
+    });
+  }
+
+  Future<String?> loadLastSelectedTargetId() async {
+    final prefs = await _loadPrefs();
+    return prefs['lastSelectedTargetId'] as String?;
   }
 }

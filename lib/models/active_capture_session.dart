@@ -15,6 +15,12 @@ class ActiveCaptureSession {
     this.isDetached = false,
     this.config,
     this.recoveryPolicy = RecoveryPolicy.prompt,
+    this.isRemote = false,
+    this.remoteHostId,
+    this.remoteHostName,
+    this.isUnreachable = false,
+    this.unreachableReason,
+    this.lastKnownSizeBytes = 0,
   });
 
   final int pid;
@@ -29,8 +35,56 @@ class ActiveCaptureSession {
   final bool isDetached;
   final CaptureConfig? config;
   final RecoveryPolicy recoveryPolicy;
+  final bool isRemote;
+  final String? remoteHostId;
+  final String? remoteHostName;
+  final bool isUnreachable;
+  final String? unreachableReason;
+  final int lastKnownSizeBytes;
 
   Duration get elapsed => DateTime.now().difference(startedAt);
+
+  ActiveCaptureSession copyWith({
+    int? pid,
+    DateTime? startedAt,
+    String? outputDirectory,
+    String? targetFilePath,
+    CaptureMode? mode,
+    String? interfaceName,
+    String? commandLine,
+    String? filter,
+    int? snaplen,
+    bool? isDetached,
+    CaptureConfig? config,
+    RecoveryPolicy? recoveryPolicy,
+    bool? isRemote,
+    String? remoteHostId,
+    String? remoteHostName,
+    bool? isUnreachable,
+    String? unreachableReason,
+    int? lastKnownSizeBytes,
+  }) {
+    return ActiveCaptureSession(
+      pid: pid ?? this.pid,
+      startedAt: startedAt ?? this.startedAt,
+      outputDirectory: outputDirectory ?? this.outputDirectory,
+      targetFilePath: targetFilePath ?? this.targetFilePath,
+      mode: mode ?? this.mode,
+      interfaceName: interfaceName ?? this.interfaceName,
+      commandLine: commandLine ?? this.commandLine,
+      filter: filter ?? this.filter,
+      snaplen: snaplen ?? this.snaplen,
+      isDetached: isDetached ?? this.isDetached,
+      config: config ?? this.config,
+      recoveryPolicy: recoveryPolicy ?? this.recoveryPolicy,
+      isRemote: isRemote ?? this.isRemote,
+      remoteHostId: remoteHostId ?? this.remoteHostId,
+      remoteHostName: remoteHostName ?? this.remoteHostName,
+      isUnreachable: isUnreachable ?? this.isUnreachable,
+      unreachableReason: unreachableReason ?? this.unreachableReason,
+      lastKnownSizeBytes: lastKnownSizeBytes ?? this.lastKnownSizeBytes,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
         'pid': pid,
@@ -44,6 +98,10 @@ class ActiveCaptureSession {
         'snaplen': snaplen,
         'isDetached': isDetached,
         'recoveryPolicy': recoveryPolicy.name,
+        'isRemote': isRemote,
+        if (remoteHostId != null) 'remoteHostId': remoteHostId,
+        if (remoteHostName != null) 'remoteHostName': remoteHostName,
+        'lastKnownSizeBytes': lastKnownSizeBytes,
         if (config != null) 'config': config!.toJson(),
       };
 
@@ -96,6 +154,10 @@ class ActiveCaptureSession {
       isDetached: json['isDetached'] as bool? ?? false,
       config: decodedConfig,
       recoveryPolicy: recoveryPolicy,
+      isRemote: json['isRemote'] as bool? ?? false,
+      remoteHostId: json['remoteHostId'] as String?,
+      remoteHostName: json['remoteHostName'] as String?,
+      lastKnownSizeBytes: json['lastKnownSizeBytes'] as int? ?? 0,
     );
   }
 }

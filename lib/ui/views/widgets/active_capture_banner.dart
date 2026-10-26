@@ -12,6 +12,7 @@ class ActiveCaptureBanner extends StatefulWidget {
     required this.fileSizeBytes,
     required this.isStopping,
     required this.onStop,
+    this.onClearRemoteSession,
   });
 
   final ActiveCaptureSession session;
@@ -19,6 +20,7 @@ class ActiveCaptureBanner extends StatefulWidget {
   final int fileSizeBytes;
   final bool isStopping;
   final VoidCallback onStop;
+  final VoidCallback? onClearRemoteSession;
 
   @override
   State<ActiveCaptureBanner> createState() => _ActiveCaptureBannerState();
@@ -102,9 +104,11 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
               children: [
                 Row(
                   children: [
-                    const Text(
-                      'CAPTURE RUNNING',
-                      style: TextStyle(
+                    Text(
+                      widget.session.isRemote
+                          ? 'REMOTE CAPTURE RUNNING (${widget.session.remoteHostName ?? "SSH"})'
+                          : 'CAPTURE RUNNING (LOCAL)',
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.0,
@@ -181,16 +185,29 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              OutlinedButton.icon(
-                onPressed: () => SystemService.openFolder(widget.session.outputDirectory),
-                icon: const Icon(Icons.folder_open, size: 16),
-                label: const Text('Open Folder'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: Colors.white24),
+              if (!widget.session.isRemote) ...[
+                OutlinedButton.icon(
+                  onPressed: () => SystemService.openFolder(widget.session.outputDirectory),
+                  icon: const Icon(Icons.folder_open, size: 16),
+                  label: const Text('Open Folder'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Colors.white24),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
+                const SizedBox(width: 10),
+              ] else if (widget.onClearRemoteSession != null) ...[
+                OutlinedButton.icon(
+                  onPressed: widget.onClearRemoteSession,
+                  icon: const Icon(Icons.cleaning_services_outlined, size: 15),
+                  label: const Text('Forget Local Record'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white70,
+                    side: const BorderSide(color: Colors.white24),
+                  ),
+                ),
+                const SizedBox(width: 10),
+              ],
               ElevatedButton.icon(
                 onPressed: widget.isStopping ? null : widget.onStop,
                 icon: widget.isStopping

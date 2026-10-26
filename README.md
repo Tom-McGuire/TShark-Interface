@@ -9,7 +9,12 @@ Designed to give network engineers, developers, and sysadmins full control over 
 ## Key Features
 
 - **Automatic Engine Detection & Path Validation**: Automatically discovers Wireshark's `tshark.exe` (or custom user-defined path) and validates binary integrity before querying version and available network interfaces.
-- **Visual Interface Picker**: Choose physical or virtual network adapters (`Wi-Fi`, `Ethernet`, `NPF_Loopback`, `Tailscale`) with hardware names and indexes. Captures bind to persistent adapter device paths (e.g. `\Device\NPF_{GUID}`) so adapter index shifts across reboots or VPN connects never misroute captures.
+- **Remote SSH Capture & Host Management**:
+  - Save and manage remote SSH hosts (Linux/Unix and Windows OpenSSH) with connection testing, OS auto-detection, and live `tshark` status indicators.
+  - Switch between **Local Machine** and any saved **Remote Host** directly in the *Capture Target & Interface* card, dynamically querying remote network adapters via `tshark -D` over SSH.
+  - Launch detached remote captures (`nohup` on Linux, hidden background process on Windows) that continue running even if the local app closes or SSH disconnects.
+  - Automatic session reconnection on startup (`remote_sessions.json`) with one-click **Clear / Forget Session** controls for hosts that were powered off or decommissioned.
+- **Visual Interface Picker**: Choose physical or virtual network adapters (`Wi-Fi`, `Ethernet`, `NPF_Loopback`, `Tailscale`, `eth0`, `ens18`) with hardware names and indexes. Captures bind to persistent adapter device paths (e.g. `\Device\NPF_{GUID}`) so adapter index shifts across reboots or VPN connects never misroute captures.
 - **One-Click Presets**:
   - *All Traffic*: Full capture with no filters.
   - *Exclude SSH & RDP*: Automatically drops port 22 and 3389 to prevent feedback loops when capturing on remote hosts.
