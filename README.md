@@ -85,3 +85,12 @@ flutter build windows --release
 ```
 
 The compiled standalone application is generated under `build\windows\x64\runner\Release\`. A portable distribution archive is available in `dist\TShark-Interface-Windows-x64.zip`.
+
+---
+
+## Note on Windows / macOS Security Prompts
+
+These tools are free and independent projects and are not yet code-signed with expensive commercial certificates:
+
+- **Windows**: If SmartScreen appears, click **"More info"** → **"Run anyway"**.
+- **macOS**: Right-click the `.app` file, select **Open**, and confirm the prompt (or run `xattr -c <AppName>.app` in Terminal).
