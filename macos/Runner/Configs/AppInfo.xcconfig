@@ -8,7 +8,7 @@
 PRODUCT_NAME = tshark_interface
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.tsharkInterface
+PRODUCT_BUNDLE_IDENTIFIER = io.github.tommcguire.tsharkInterface
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 Tom McGuire. All rights reserved.
