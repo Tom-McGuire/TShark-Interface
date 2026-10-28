@@ -2,7 +2,7 @@ name: tshark_interface
 description: "A lightweight desktop interface for headless T-Shark packet captures."
 publish_to: 'none'
 
-version: 1.0.0+1
+version: 0.5.1-Beta
 
 environment:
   sdk: ^3.13.5
