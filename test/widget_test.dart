@@ -11,7 +11,16 @@ void main() {
     await tester.pumpWidget(const TSharkInterfaceApp());
     await tester.pump();
 
-    expect(find.text('T-Shark Interface'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Text &&
+            (widget.data?.toLowerCase() == 't-shark interface' ||
+                widget.textSpan?.toPlainText().toLowerCase() ==
+                    't-shark interface'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Quick Presets'), findsOneWidget);
   });
 }

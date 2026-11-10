@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:tshark_interface/models/active_capture_session.dart';
@@ -8,7 +9,6 @@ import 'package:tshark_interface/models/capture_preset.dart';
 import 'package:tshark_interface/models/remote_host.dart';
 import 'package:tshark_interface/ui/theme/app_theme.dart';
 import 'package:tshark_interface/view_models/tshark_capture_view_model.dart';
-import 'dialogs/remote_host_dialog.dart';
 import 'dialogs/settings_dialog.dart';
 import 'widgets/active_capture_banner.dart';
 import 'widgets/capture_filter_input.dart';
@@ -29,7 +29,6 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
   final _filePrefixController = TextEditingController();
   final _packetLimitController = TextEditingController();
   final _remoteOutputDirController = TextEditingController();
-  int _selectedTabIndex = 0;
 
   @override
   void initState() {
@@ -65,17 +64,115 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
     );
   }
 
-  Future<void> _openAddRemoteHostDialog(
+  Future<void> _openRemoteHostsDialog(
     BuildContext context,
     TSharkCaptureViewModel vm,
   ) async {
-    final added = await showDialog<RemoteHost>(
+    await showDialog(
       context: context,
-      builder: (_) => RemoteHostDialog(viewModel: vm),
+      builder: (dialogCtx) {
+        return Dialog(
+          backgroundColor: const Color(0xFF13171F),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xFF2C2C2C)),
+          ),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              maxWidth: 950,
+              maxHeight: 700,
+            ),
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF161B24),
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                    border: Border(bottom: BorderSide(color: Color(0xFF2C2C2C))),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.dns_outlined, color: AppTheme.accentCyan, size: 20),
+                      const SizedBox(width: 10),
+                      const Text(
+                        'Remote SSH Hosts Management',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 18),
+                        onPressed: () => Navigator.of(dialogCtx).pop(),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(20),
+                    child: RemoteHostsTab(
+                      viewModel: vm,
+                      onSelectHostForCapture: (RemoteHost host) async {
+                        Navigator.of(dialogCtx).pop();
+                        await vm.selectTargetHost(host);
+                        _remoteOutputDirController.text = vm.outputDirectory;
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
-    if (added != null && mounted) {
-      await vm.selectTargetHost(added);
-      _remoteOutputDirController.text = vm.outputDirectory;
+  }
+
+  void _loadDemoPreset(TSharkCaptureViewModel vm) {
+    // Standard Load Demo preset for TShark
+    final demoPreset = vm.presets.firstWhere(
+      (p) => p.id == 'web_traffic',
+      orElse: () => vm.presets.first,
+    );
+    vm.applyPreset(demoPreset);
+    _packetLimitController.text = vm.packetCountLimit.toString();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Demo Preset "${demoPreset.title}" Loaded: ${demoPreset.description}'),
+        backgroundColor: const Color(0xFF10B981),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _clearCaptureSettings(TSharkCaptureViewModel vm) {
+    vm.setCaptureFilter('');
+    vm.setMode(CaptureMode.manual);
+    vm.setPacketCountLimit(10000);
+    _packetLimitController.text = '10000';
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Capture filters and limits cleared to defaults.'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _handleExportSelection(String value, TSharkCaptureViewModel vm) {
+    if (value == 'open_folder') {
+      vm.openActiveDirectory();
+    } else if (value == 'copy_cmd') {
+      Clipboard.setData(ClipboardData(text: vm.previewCommandLine));
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Command line copied to clipboard!'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -84,209 +181,372 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
     final vm = context.watch<TSharkCaptureViewModel>();
 
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF13171F),
-        elevation: 0,
-        titleSpacing: 20,
-        title: Row(
+      backgroundColor: const Color(0xFF0F141C),
+      body: SafeArea(
+        child: Column(
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.asset(
-                'assets/images/app_logo.png',
-                width: 34,
-                height: 34,
-                fit: BoxFit.cover,
-              ),
-            ),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'T-Shark Interface',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 0.2,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    'Headless Packet Capture Studio',
-                    style: TextStyle(fontSize: 11, color: Colors.white54),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+            _buildTopControlBar(context, vm),
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: _buildCaptureStudioBody(context, vm),
               ),
             ),
           ],
-        ),
-        actions: [
-          // Top Navigation Tab Switcher
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 9),
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF0F141C),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: AppTheme.borderColor),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildNavTabButton(
-                  index: 0,
-                  icon: Icons.radar,
-                  label: 'Capture Studio',
-                ),
-                const SizedBox(width: 4),
-                _buildNavTabButton(
-                  index: 1,
-                  icon: Icons.dns_outlined,
-                  label: 'Remote Hosts',
-                  badgeCount: vm.remoteSessions.length,
-                  hasWarning: vm.unreachableRemoteSessions.isNotEmpty,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 14),
-
-          // Engine / Target Status Pill
-          Container(
-            margin: const EdgeInsets.symmetric(vertical: 10),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: vm.hasTShark
-                  ? AppTheme.accentEmerald.withValues(alpha: 0.15)
-                  : AppTheme.accentAmber.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: vm.hasTShark
-                    ? AppTheme.accentEmerald.withValues(alpha: 0.4)
-                    : AppTheme.accentAmber.withValues(alpha: 0.4),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  vm.isRemoteTarget
-                      ? Icons.cloud_done_outlined
-                      : (vm.hasTShark ? Icons.check_circle : Icons.warning_amber),
-                  size: 14,
-                  color: vm.hasTShark
-                      ? AppTheme.accentEmerald
-                      : AppTheme.accentAmber,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  vm.isRemoteTarget
-                      ? 'SSH: ${vm.selectedRemoteHost!.name}'
-                      : (vm.hasTShark ? 'Engine Ready' : 'TShark Not Found'),
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: vm.hasTShark
-                        ? AppTheme.accentEmerald
-                        : AppTheme.accentAmber,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          IconButton(
-            icon: const Icon(Icons.settings_outlined, size: 20),
-            tooltip: 'Engine & Output Settings',
-            onPressed: () => _openSettings(context, vm),
-          ),
-          const SizedBox(width: 16),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(color: AppTheme.borderColor),
-        ),
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: _selectedTabIndex == 1
-              ? RemoteHostsTab(
-                  viewModel: vm,
-                  onSelectHostForCapture: (RemoteHost host) async {
-                    setState(() => _selectedTabIndex = 0);
-                    await vm.selectTargetHost(host);
-                    _remoteOutputDirController.text = vm.outputDirectory;
-                  },
-                )
-              : _buildCaptureStudioBody(context, vm),
         ),
       ),
     );
   }
 
-  Widget _buildNavTabButton({
-    required int index,
-    required IconData icon,
-    required String label,
-    int badgeCount = 0,
-    bool hasWarning = false,
-  }) {
-    final isSelected = _selectedTabIndex == index;
-    return InkWell(
-      onTap: () => setState(() => _selectedTabIndex = index),
-      borderRadius: BorderRadius.circular(7),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? AppTheme.accentCyan.withValues(alpha: 0.18)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(7),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              icon,
-              size: 15,
-              color: isSelected ? AppTheme.accentCyan : Colors.white60,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                color: isSelected ? AppTheme.accentCyan : Colors.white70,
+  Widget _buildTopControlBar(BuildContext context, TSharkCaptureViewModel vm) {
+    return Container(
+      height: 52,
+      decoration: const BoxDecoration(
+        color: Color(0xFF1E1E1E),
+        border: Border(bottom: BorderSide(color: Color(0xFF2C2C2C), width: 1)),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minWidth: constraints.maxWidth),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Left Cluster: Zone 1 (Branding), Zone 2 (Interface & Target), Zone 3 (Primary Actions)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ==================== ZONE 1: BRANDING ====================
+                        SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(6),
+                            child: Image.asset(
+                              'assets/images/app_logo.png',
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'T-SHARK INTERFACE',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.8,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              'Headless Packet Capture Studio',
+                              style: TextStyle(fontSize: 10, color: Colors.white54),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 16),
+
+                        // ==================== ZONE 2: INTERFACE & TARGET ====================
+                        // Target Machine Selector (Local vs Remote Host)
+                        Container(
+                          height: 32,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF161B24),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF2C2C2C)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String?>(
+                              key: ValueKey('top_target_${vm.selectedRemoteHost?.id ?? "local"}'),
+                              value: vm.selectedRemoteHost?.id,
+                              isDense: true,
+                              dropdownColor: const Color(0xFF161B24),
+                              style: const TextStyle(fontSize: 11, color: Colors.white),
+                              icon: const Icon(Icons.arrow_drop_down, size: 16, color: Colors.white70),
+                              items: [
+                                DropdownMenuItem<String?>(
+                                  value: null,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Icon(Icons.computer, size: 14, color: Colors.white70),
+                                      const SizedBox(width: 6),
+                                      const Text('Localhost (This PC)', style: TextStyle(fontSize: 11)),
+                                      if (vm.localActiveSession != null) ...[
+                                        const SizedBox(width: 6),
+                                        _buildStatusDot(
+                                          color: AppTheme.accentEmerald,
+                                          label: 'Capturing',
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                ...vm.remoteHosts.map((host) {
+                                  final rSession = vm.remoteSessions[host.id];
+                                  return DropdownMenuItem<String?>(
+                                    value: host.id,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Icon(Icons.dns_outlined, size: 14, color: AppTheme.accentCyan),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          'SSH: ${host.name}',
+                                          style: const TextStyle(fontSize: 11),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        if (rSession != null) ...[
+                                          const SizedBox(width: 6),
+                                          _buildStatusDot(
+                                            color: rSession.isUnreachable
+                                                ? AppTheme.accentAmber
+                                                : AppTheme.accentEmerald,
+                                            label: rSession.isUnreachable ? 'Unreachable' : 'Capturing',
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              ],
+                              onChanged: (String? hostId) async {
+                                if (hostId == null) {
+                                  await vm.selectTargetHost(null);
+                                } else {
+                                  final match = vm.remoteHosts.where((h) => h.id == hostId);
+                                  if (match.isNotEmpty) {
+                                    await vm.selectTargetHost(match.first);
+                                  }
+                                }
+                                _remoteOutputDirController.text = vm.outputDirectory;
+                              },
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // Network Interface Selector
+                        Container(
+                          height: 32,
+                          constraints: const BoxConstraints(minWidth: 140, maxWidth: 210),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF161B24),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFF2C2C2C)),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<CaptureInterface>(
+                              key: ValueKey(
+                                'top_iface_${vm.selectedRemoteHost?.id ?? "local"}_${vm.selectedInterface?.name ?? "none"}',
+                              ),
+                              value: vm.interfaces.contains(vm.selectedInterface)
+                                  ? vm.selectedInterface
+                                  : null,
+                              isDense: true,
+                              isExpanded: true,
+                              dropdownColor: const Color(0xFF161B24),
+                              hint: const Text(
+                                'Select Interface',
+                                style: TextStyle(fontSize: 11, color: Colors.white54),
+                              ),
+                              style: const TextStyle(fontSize: 11, color: Colors.white),
+                              icon: const Icon(Icons.arrow_drop_down, size: 16, color: Colors.white70),
+                              items: vm.interfaces.map((iface) {
+                                return DropdownMenuItem<CaptureInterface>(
+                                  value: iface,
+                                  child: Text(
+                                    iface.displayName,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 11),
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: vm.isCapturing ? null : (val) => vm.setSelectedInterface(val),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton(
+                          icon: vm.isLoading
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : const Icon(Icons.refresh, size: 16),
+                          tooltip: vm.isRemoteTarget
+                              ? 'Refresh Remote Network Interfaces over SSH'
+                              : 'Refresh Interfaces',
+                          onPressed: vm.isCapturing ? null : () => vm.refreshInterfaces(),
+                        ),
+                        const SizedBox(width: 12),
+
+                        // ==================== ZONE 3: PRIMARY ACTIONS ====================
+                        FilledButton.icon(
+                          onPressed: (vm.isCapturing || !vm.hasTShark || vm.isLoading)
+                              ? (vm.isCapturing ? () => vm.stopCapture() : null)
+                              : () => vm.startCapture(),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: vm.isCapturing
+                                ? const Color(0xFFEF4444) // Active Red
+                                : const Color(0xFF10B981), // Idle Emerald Green (from ARP Scout)
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                          icon: Icon(
+                            vm.isCapturing
+                                ? Icons.stop
+                                : (vm.isRemoteTarget ? Icons.cloud_upload_outlined : Icons.play_arrow),
+                            size: 17,
+                          ),
+                          label: Text(
+                            vm.isCapturing
+                                ? 'Stop Capture'
+                                : (vm.isRemoteTarget
+                                    ? 'Start Remote Capture'
+                                    : (vm.runDetached ? 'Start Headless' : 'Start Capture')),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // Right Cluster: Zone 4 (Ecosystem & Demo), Zone 5 (Clear & Export)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // ==================== ZONE 4: ECOSYSTEM & DEMO ====================
+                        // Remote Hosts Manager Button
+                        OutlinedButton.icon(
+                          onPressed: () => _openRemoteHostsDialog(context, vm),
+                          icon: const Icon(Icons.dns_outlined, size: 15),
+                          label: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Remote Hosts', style: TextStyle(fontSize: 11)),
+                              if (vm.remoteSessions.isNotEmpty) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: vm.unreachableRemoteSessions.isNotEmpty
+                                        ? AppTheme.accentAmber
+                                        : AppTheme.accentEmerald,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    vm.remoteSessions.length.toString(),
+                                    style: const TextStyle(
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // Load Demo Button
+                        OutlinedButton.icon(
+                          onPressed: vm.isCapturing ? null : () => _loadDemoPreset(vm),
+                          icon: const Icon(Icons.play_circle_outline, size: 15),
+                          label: const Text('Load Demo', style: TextStyle(fontSize: 11)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // ==================== ZONE 5: CLEAR & EXPORT ====================
+                        OutlinedButton.icon(
+                          onPressed: vm.isCapturing ? null : () => _clearCaptureSettings(vm),
+                          icon: const Icon(Icons.delete_sweep_outlined, size: 15),
+                          label: const Text('Clear', style: TextStyle(fontSize: 11)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        // Export Menu
+                        PopupMenuButton<String>(
+                          tooltip: 'Export & Actions',
+                          onSelected: (val) => _handleExportSelection(val, vm),
+                          itemBuilder: (_) => [
+                            const PopupMenuItem<String>(
+                              value: 'open_folder',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.folder_open, size: 16),
+                                  SizedBox(width: 10),
+                                  Text('Open Storage Folder', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                            const PopupMenuItem<String>(
+                              value: 'copy_cmd',
+                              child: Row(
+                                children: [
+                                  Icon(Icons.terminal, size: 16),
+                                  SizedBox(width: 10),
+                                  Text('Copy Command Line', style: TextStyle(fontSize: 12)),
+                                ],
+                              ),
+                            ),
+                          ],
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: const Color(0xFF2C2C2C)),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.download, size: 15, color: Colors.white70),
+                                SizedBox(width: 6),
+                                Text('Export', style: TextStyle(fontSize: 11, color: Colors.white70)),
+                                Icon(Icons.arrow_drop_down, size: 14, color: Colors.white70),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+
+                        IconButton(
+                          icon: const Icon(Icons.settings_outlined, size: 18),
+                          tooltip: 'Engine & Output Settings',
+                          onPressed: () => _openSettings(context, vm),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
-            if (badgeCount > 0) ...[
-              const SizedBox(width: 6),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-                decoration: BoxDecoration(
-                  color: hasWarning
-                      ? AppTheme.accentAmber
-                      : AppTheme.accentEmerald,
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  badgeCount.toString(),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
+          );
+        },
       ),
     );
   }
@@ -530,173 +790,6 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Card: Capture Target & Interface
-        _buildSectionCard(
-          title: 'Capture Target & Interface',
-          icon: Icons.settings_ethernet,
-          trailing: TextButton.icon(
-            onPressed: () => setState(() => _selectedTabIndex = 1),
-            icon: const Icon(Icons.dns_outlined, size: 14),
-            label: Text(
-              'Manage Remote Hosts (${vm.remoteHosts.length})',
-              style: const TextStyle(fontSize: 11),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. Target Machine Selector (Local vs Remote SSH Hosts)
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<String?>(
-                      key: ValueKey('target_${vm.selectedRemoteHost?.id ?? "local"}'),
-                      initialValue: vm.selectedRemoteHost?.id,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Select Target Machine',
-                        prefixIcon: Icon(Icons.computer, size: 18),
-                      ),
-                      items: [
-                        DropdownMenuItem<String?>(
-                          value: null,
-                          child: Row(
-                            children: [
-                              const Flexible(
-                                child: Text(
-                                  'Local Machine (This PC)',
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(fontSize: 13),
-                                ),
-                              ),
-                              if (vm.localActiveSession != null) ...[
-                                const SizedBox(width: 8),
-                                _buildStatusDot(
-                                  color: AppTheme.accentEmerald,
-                                  label: 'Capturing',
-                                ),
-                              ],
-                            ],
-                          ),
-                        ),
-                        ...vm.remoteHosts.map((host) {
-                          final rSession = vm.remoteSessions[host.id];
-                          return DropdownMenuItem<String?>(
-                            value: host.id,
-                            child: Row(
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    'SSH: ${host.displayLabel}',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 13),
-                                  ),
-                                ),
-                                if (rSession != null) ...[
-                                  const SizedBox(width: 8),
-                                  _buildStatusDot(
-                                    color: rSession.isUnreachable
-                                        ? AppTheme.accentAmber
-                                        : AppTheme.accentEmerald,
-                                    label: rSession.isUnreachable
-                                        ? 'Unreachable'
-                                        : 'Capturing',
-                                  ),
-                                ],
-                              ],
-                            ),
-                          );
-                        }),
-                      ],
-                      onChanged: (String? hostId) async {
-                        if (hostId == null) {
-                          await vm.selectTargetHost(null);
-                        } else {
-                          final match =
-                              vm.remoteHosts.where((h) => h.id == hostId);
-                          if (match.isNotEmpty) {
-                            await vm.selectTargetHost(match.first);
-                          }
-                        }
-                        _remoteOutputDirController.text = vm.outputDirectory;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(
-                      Icons.add_circle_outline,
-                      color: AppTheme.accentCyan,
-                    ),
-                    tooltip: 'Add Remote SSH Machine',
-                    onPressed: () => _openAddRemoteHostDialog(context, vm),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-
-              // 2. Network Interface Selector (Populated for selected target machine)
-              Row(
-                children: [
-                  Expanded(
-                    child: DropdownButtonFormField<CaptureInterface>(
-                      key: ValueKey(
-                        'iface_${vm.selectedRemoteHost?.id ?? "local"}_${vm.selectedInterface?.name ?? "none"}',
-                      ),
-                      initialValue: vm.interfaces.contains(vm.selectedInterface)
-                          ? vm.selectedInterface
-                          : null,
-                      isExpanded: true,
-                      decoration: InputDecoration(
-                        labelText: vm.isRemoteTarget
-                            ? 'Select Remote Network Interface (${vm.selectedRemoteHost!.name})'
-                            : 'Select Network Interface',
-                        prefixIcon: const Icon(Icons.router_outlined, size: 18),
-                      ),
-                      items: vm.interfaces.map((iface) {
-                        return DropdownMenuItem<CaptureInterface>(
-                          value: iface,
-                          child: Text(
-                            iface.displayName,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 13),
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: vm.isCapturing
-                          ? null
-                          : (val) => vm.setSelectedInterface(val),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  IconButton(
-                    icon: vm.isLoading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.refresh),
-                    tooltip: vm.isRemoteTarget
-                        ? 'Refresh Remote Network Interfaces over SSH'
-                        : 'Refresh Network Interfaces',
-                    onPressed:
-                        vm.isCapturing ? null : () => vm.refreshInterfaces(),
-                  ),
-                ],
-              ),
-              if (vm.selectedInterface?.friendlyName != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  'Physical/Device: ${vm.selectedInterface!.name}',
-                  style: const TextStyle(fontSize: 11, color: Colors.white38),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
         // Card: Filter & Mode
         _buildSectionCard(
           title: 'Traffic Filter & Capture Mode',
@@ -1290,67 +1383,9 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
   }
 
   Widget _buildRightColumn(BuildContext context, TSharkCaptureViewModel vm) {
-    final targetLabel = vm.isRemoteTarget
-        ? 'on ${vm.selectedRemoteHost!.name} (SSH)'
-        : '(Local)';
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Action Button: Start Capture
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF161B24),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppTheme.borderColor),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ElevatedButton.icon(
-                onPressed: (vm.isCapturing || !vm.hasTShark || vm.isLoading)
-                    ? null
-                    : () => vm.startCapture(),
-                icon: Icon(
-                  vm.isRemoteTarget ? Icons.cloud_upload_outlined : Icons.play_arrow,
-                  size: 22,
-                ),
-                label: Text(
-                  vm.isCapturing
-                      ? 'Capture Already Active $targetLabel'
-                      : (vm.isRemoteTarget
-                          ? 'Start Remote Capture $targetLabel'
-                          : (vm.runDetached
-                              ? 'Start Headless Capture'
-                              : 'Start Capture')),
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.accentEmerald,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-              ),
-              if (!vm.hasTShark) ...[
-                const SizedBox(height: 8),
-                const Text(
-                  'Wireshark / TShark executable is required to start captures.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: AppTheme.accentAmber),
-                ),
-              ],
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-
         // Live Command Line Preview Card
         CommandPreviewCard(
           commandLine: vm.previewCommandLine,
