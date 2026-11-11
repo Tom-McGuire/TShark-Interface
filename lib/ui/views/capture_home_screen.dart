@@ -6,8 +6,10 @@ import 'package:tshark_interface/models/active_capture_session.dart';
 import 'package:tshark_interface/models/capture_config.dart';
 import 'package:tshark_interface/models/capture_interface.dart';
 import 'package:tshark_interface/models/capture_preset.dart';
+import 'package:tshark_interface/models/demo_packet.dart';
 import 'package:tshark_interface/models/remote_host.dart';
 import 'package:tshark_interface/ui/theme/app_theme.dart';
+import 'package:tshark_interface/ui/widgets/guided_tour_overlay.dart';
 import 'package:tshark_interface/view_models/tshark_capture_view_model.dart';
 import 'dialogs/settings_dialog.dart';
 import 'widgets/active_capture_banner.dart';
@@ -29,6 +31,14 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
   final _filePrefixController = TextEditingController();
   final _packetLimitController = TextEditingController();
   final _remoteOutputDirController = TextEditingController();
+
+  // Spotlight Tour Keys & State
+  bool _isTourActive = false;
+  final GlobalKey _zone2TargetInterfaceKey = GlobalKey();
+  final GlobalKey _zone3StartStopKey = GlobalKey();
+  final GlobalKey _presetsAndFiltersKey = GlobalKey();
+  final GlobalKey _livePacketTableKey = GlobalKey();
+  final GlobalKey _packetDissectionExportKey = GlobalKey();
 
   @override
   void initState() {
@@ -132,28 +142,65 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
     );
   }
 
-  void _loadDemoPreset(TSharkCaptureViewModel vm) {
-    // Standard Load Demo preset for TShark
-    final demoPreset = vm.presets.firstWhere(
-      (p) => p.id == 'web_traffic',
-      orElse: () => vm.presets.first,
-    );
-    vm.applyPreset(demoPreset);
+  void startDemoWalkthrough(TSharkCaptureViewModel vm) {
+    vm.loadDemoWalkthroughData();
     _packetLimitController.text = vm.packetCountLimit.toString();
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Demo Preset "${demoPreset.title}" Loaded: ${demoPreset.description}'),
-        backgroundColor: const Color(0xFF10B981),
-        duration: const Duration(seconds: 2),
+    setState(() {
+      _isTourActive = true;
+    });
+  }
+
+  void endDemoWalkthrough(TSharkCaptureViewModel vm) {
+    setState(() {
+      _isTourActive = false;
+    });
+    vm.clearCapture();
+    _packetLimitController.text = vm.packetCountLimit.toString();
+  }
+
+  List<GuidedTourStep> _buildTourSteps(TSharkCaptureViewModel vm) {
+    return [
+      GuidedTourStep(
+        targetKey: _zone2TargetInterfaceKey,
+        title: 'Zone 2: Interface, Target & Remote Capture',
+        description:
+            'Choose the local TShark capture interface, switch between Localhost and remote SSH capture hosts, or refresh network adapters.',
       ),
-    );
+      GuidedTourStep(
+        targetKey: _zone3StartStopKey,
+        title: 'Zone 3: Start / Stop Live Capture',
+        description:
+            'Launch the underlying tshark capture engine with real-time packet streaming or headless ring-buffer recording.',
+      ),
+      GuidedTourStep(
+        targetKey: _presetsAndFiltersKey,
+        title: 'Capture Presets & Display Filters',
+        description:
+            'Apply one-click diagnostic filter presets (e.g., Exclude SSH/RDP, Web Traffic, DNS & DHCP) or enter custom BPF capture filters.',
+      ),
+      GuidedTourStep(
+        targetKey: _livePacketTableKey,
+        title: 'Live Packet Stream Table',
+        description:
+            'Inspect live captured frames as they arrive in real time, including source/destination IPs, protocol badges, frame sizes, and summary info.',
+        onStepEnter: () {
+          if (vm.demoPackets.isNotEmpty) {
+            vm.selectDemoPacket(vm.demoPackets.first);
+          }
+        },
+      ),
+      GuidedTourStep(
+        targetKey: _packetDissectionExportKey,
+        title: 'Packet Dissection & PCAP Export',
+        description:
+            'View detailed protocol frame layers for the selected packet, preview the exact TShark CLI invocation, and export captures to .pcapng or CSV.',
+      ),
+    ];
   }
 
   void _clearCaptureSettings(TSharkCaptureViewModel vm) {
-    vm.setCaptureFilter('');
-    vm.setMode(CaptureMode.manual);
-    vm.setPacketCountLimit(10000);
-    _packetLimitController.text = '10000';
+    vm.clearCapture();
+    _packetLimitController.text = vm.packetCountLimit.toString();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Capture filters and limits cleared to defaults.'),
@@ -180,19 +227,24 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
   Widget build(BuildContext context) {
     final vm = context.watch<TSharkCaptureViewModel>();
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF0F141C),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildTopControlBar(context, vm),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: _buildCaptureStudioBody(context, vm),
+    return GuidedTourOverlay(
+      isActive: _isTourActive,
+      steps: _buildTourSteps(vm),
+      onFinish: () => endDemoWalkthrough(vm),
+      child: Scaffold(
+        backgroundColor: const Color(0xFF0F141C),
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildTopControlBar(context, vm),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20),
+                  child: _buildCaptureStudioBody(context, vm),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -255,169 +307,178 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                         const SizedBox(width: 16),
 
                         // ==================== ZONE 2: INTERFACE & TARGET ====================
-                        // Target Machine Selector (Local vs Remote Host)
-                        Container(
-                          height: 32,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF161B24),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0xFF2C2C2C)),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String?>(
-                              key: ValueKey('top_target_${vm.selectedRemoteHost?.id ?? "local"}'),
-                              value: vm.selectedRemoteHost?.id,
-                              isDense: true,
-                              dropdownColor: const Color(0xFF161B24),
-                              style: const TextStyle(fontSize: 11, color: Colors.white),
-                              icon: const Icon(Icons.arrow_drop_down, size: 16, color: Colors.white70),
-                              items: [
-                                DropdownMenuItem<String?>(
-                                  value: null,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.computer, size: 14, color: Colors.white70),
-                                      const SizedBox(width: 6),
-                                      const Text('Localhost (This PC)', style: TextStyle(fontSize: 11)),
-                                      if (vm.localActiveSession != null) ...[
-                                        const SizedBox(width: 6),
-                                        _buildStatusDot(
-                                          color: AppTheme.accentEmerald,
-                                          label: 'Capturing',
-                                        ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
-                                ...vm.remoteHosts.map((host) {
-                                  final rSession = vm.remoteSessions[host.id];
-                                  return DropdownMenuItem<String?>(
-                                    value: host.id,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        const Icon(Icons.dns_outlined, size: 14, color: AppTheme.accentCyan),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          'SSH: ${host.name}',
-                                          style: const TextStyle(fontSize: 11),
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        if (rSession != null) ...[
+                        Row(
+                          key: _zone2TargetInterfaceKey,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Target Machine Selector (Local vs Remote Host)
+                            Container(
+                              height: 32,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF161B24),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFF2C2C2C)),
+                              ),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<String?>(
+                                  key: ValueKey('top_target_${vm.selectedRemoteHost?.id ?? "local"}'),
+                                  value: vm.selectedRemoteHost?.id,
+                                  isDense: true,
+                                  dropdownColor: const Color(0xFF161B24),
+                                  style: const TextStyle(fontSize: 11, color: Colors.white),
+                                  icon: const Icon(Icons.arrow_drop_down, size: 16, color: Colors.white70),
+                                  items: [
+                                    DropdownMenuItem<String?>(
+                                      value: null,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          const Icon(Icons.computer, size: 14, color: Colors.white70),
                                           const SizedBox(width: 6),
-                                          _buildStatusDot(
-                                            color: rSession.isUnreachable
-                                                ? AppTheme.accentAmber
-                                                : AppTheme.accentEmerald,
-                                            label: rSession.isUnreachable ? 'Unreachable' : 'Capturing',
-                                          ),
+                                          const Text('Localhost (This PC)', style: TextStyle(fontSize: 11)),
+                                          if (vm.localActiveSession != null) ...[
+                                            const SizedBox(width: 6),
+                                            _buildStatusDot(
+                                              color: AppTheme.accentEmerald,
+                                              label: 'Capturing',
+                                            ),
+                                          ],
                                         ],
-                                      ],
+                                      ),
                                     ),
-                                  );
-                                }),
-                              ],
-                              onChanged: (String? hostId) async {
-                                if (hostId == null) {
-                                  await vm.selectTargetHost(null);
-                                } else {
-                                  final match = vm.remoteHosts.where((h) => h.id == hostId);
-                                  if (match.isNotEmpty) {
-                                    await vm.selectTargetHost(match.first);
-                                  }
-                                }
-                                _remoteOutputDirController.text = vm.outputDirectory;
-                              },
+                                    ...vm.remoteHosts.map((host) {
+                                      final rSession = vm.remoteSessions[host.id];
+                                      return DropdownMenuItem<String?>(
+                                        value: host.id,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(Icons.dns_outlined, size: 14, color: AppTheme.accentCyan),
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              'SSH: ${host.name}',
+                                              style: const TextStyle(fontSize: 11),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            if (rSession != null) ...[
+                                              const SizedBox(width: 6),
+                                              _buildStatusDot(
+                                                color: rSession.isUnreachable
+                                                    ? AppTheme.accentAmber
+                                                    : AppTheme.accentEmerald,
+                                                label: rSession.isUnreachable ? 'Unreachable' : 'Capturing',
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                  onChanged: (String? hostId) async {
+                                    if (hostId == null) {
+                                      await vm.selectTargetHost(null);
+                                    } else {
+                                      final match = vm.remoteHosts.where((h) => h.id == hostId);
+                                      if (match.isNotEmpty) {
+                                        await vm.selectTargetHost(match.first);
+                                      }
+                                    }
+                                    _remoteOutputDirController.text = vm.outputDirectory;
+                                  },
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
+                            const SizedBox(width: 8),
 
-                        // Network Interface Selector
-                        Container(
-                          height: 32,
-                          constraints: const BoxConstraints(minWidth: 140, maxWidth: 210),
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF161B24),
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: const Color(0xFF2C2C2C)),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<CaptureInterface>(
-                              key: ValueKey(
-                                'top_iface_${vm.selectedRemoteHost?.id ?? "local"}_${vm.selectedInterface?.name ?? "none"}',
+                            // Network Interface Selector
+                            Container(
+                              height: 32,
+                              constraints: const BoxConstraints(minWidth: 140, maxWidth: 210),
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF161B24),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFF2C2C2C)),
                               ),
-                              value: vm.interfaces.contains(vm.selectedInterface)
-                                  ? vm.selectedInterface
-                                  : null,
-                              isDense: true,
-                              isExpanded: true,
-                              dropdownColor: const Color(0xFF161B24),
-                              hint: const Text(
-                                'Select Interface',
-                                style: TextStyle(fontSize: 11, color: Colors.white54),
-                              ),
-                              style: const TextStyle(fontSize: 11, color: Colors.white),
-                              icon: const Icon(Icons.arrow_drop_down, size: 16, color: Colors.white70),
-                              items: vm.interfaces.map((iface) {
-                                return DropdownMenuItem<CaptureInterface>(
-                                  value: iface,
-                                  child: Text(
-                                    iface.displayName,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 11),
+                              child: DropdownButtonHideUnderline(
+                                child: DropdownButton<CaptureInterface>(
+                                  key: ValueKey(
+                                    'top_iface_${vm.selectedRemoteHost?.id ?? "local"}_${vm.selectedInterface?.name ?? "none"}',
                                   ),
-                                );
-                              }).toList(),
-                              onChanged: vm.isCapturing ? null : (val) => vm.setSelectedInterface(val),
+                                  value: vm.interfaces.contains(vm.selectedInterface)
+                                      ? vm.selectedInterface
+                                      : null,
+                                  isDense: true,
+                                  isExpanded: true,
+                                  dropdownColor: const Color(0xFF161B24),
+                                  hint: const Text(
+                                    'Select Interface',
+                                    style: TextStyle(fontSize: 11, color: Colors.white54),
+                                  ),
+                                  style: const TextStyle(fontSize: 11, color: Colors.white),
+                                  icon: const Icon(Icons.arrow_drop_down, size: 16, color: Colors.white70),
+                                  items: vm.interfaces.map((iface) {
+                                    return DropdownMenuItem<CaptureInterface>(
+                                      value: iface,
+                                      child: Text(
+                                        iface.displayName,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: vm.isCapturing ? null : (val) => vm.setSelectedInterface(val),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        IconButton(
-                          icon: vm.isLoading
-                              ? const SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : const Icon(Icons.refresh, size: 16),
-                          tooltip: vm.isRemoteTarget
-                              ? 'Refresh Remote Network Interfaces over SSH'
-                              : 'Refresh Interfaces',
-                          onPressed: vm.isCapturing ? null : () => vm.refreshInterfaces(),
+                            const SizedBox(width: 4),
+                            IconButton(
+                              icon: vm.isLoading
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.refresh, size: 16),
+                              tooltip: vm.isRemoteTarget
+                                  ? 'Refresh Remote Network Interfaces over SSH'
+                                  : 'Refresh Interfaces',
+                              onPressed: vm.isCapturing ? null : () => vm.refreshInterfaces(),
+                            ),
+                          ],
                         ),
                         const SizedBox(width: 12),
 
                         // ==================== ZONE 3: PRIMARY ACTIONS ====================
-                        FilledButton.icon(
-                          onPressed: (vm.isCapturing || !vm.hasTShark || vm.isLoading)
-                              ? (vm.isCapturing ? () => vm.stopCapture() : null)
-                              : () => vm.startCapture(),
-                          style: FilledButton.styleFrom(
-                            backgroundColor: vm.isCapturing
-                                ? const Color(0xFFEF4444) // Active Red
-                                : const Color(0xFF10B981), // Idle Emerald Green (from ARP Scout)
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                          ),
-                          icon: Icon(
-                            vm.isCapturing
-                                ? Icons.stop
-                                : (vm.isRemoteTarget ? Icons.cloud_upload_outlined : Icons.play_arrow),
-                            size: 17,
-                          ),
-                          label: Text(
-                            vm.isCapturing
-                                ? 'Stop Capture'
-                                : (vm.isRemoteTarget
-                                    ? 'Start Remote Capture'
-                                    : (vm.runDetached ? 'Start Headless' : 'Start Capture')),
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                        KeyedSubtree(
+                          key: _zone3StartStopKey,
+                          child: FilledButton.icon(
+                            onPressed: (vm.isCapturing || !vm.hasTShark || vm.isLoading)
+                                ? (vm.isCapturing ? () => vm.stopCapture() : null)
+                                : () => vm.startCapture(),
+                            style: FilledButton.styleFrom(
+                              backgroundColor: vm.isCapturing
+                                  ? const Color(0xFFEF4444) // Active Red
+                                  : const Color(0xFF10B981), // Idle Emerald Green (from ARP Scout)
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                            ),
+                            icon: Icon(
+                              vm.isCapturing
+                                  ? Icons.stop
+                                  : (vm.isRemoteTarget ? Icons.cloud_upload_outlined : Icons.play_arrow),
+                              size: 17,
+                            ),
+                            label: Text(
+                              vm.isCapturing
+                                  ? 'Stop Capture'
+                                  : (vm.isRemoteTarget
+                                      ? 'Start Remote Capture'
+                                      : (vm.runDetached ? 'Start Headless' : 'Start Capture')),
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                            ),
                           ),
                         ),
                       ],
@@ -465,12 +526,35 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                         ),
                         const SizedBox(width: 8),
 
-                        // Load Demo Button
+                        // Load Demo / Exit Demo Button
                         OutlinedButton.icon(
-                          onPressed: vm.isCapturing ? null : () => _loadDemoPreset(vm),
-                          icon: const Icon(Icons.play_circle_outline, size: 15),
-                          label: const Text('Load Demo', style: TextStyle(fontSize: 11)),
+                          onPressed: vm.isCapturing
+                              ? null
+                              : () {
+                                  if (vm.isDemoMode) {
+                                    endDemoWalkthrough(vm);
+                                  } else {
+                                    startDemoWalkthrough(vm);
+                                  }
+                                },
+                          icon: Icon(
+                            vm.isDemoMode
+                                ? Icons.stop_circle_outlined
+                                : Icons.play_circle_outline,
+                            size: 15,
+                            color: vm.isDemoMode ? const Color(0xFFF59E0B) : null,
+                          ),
+                          label: Text(
+                            vm.isDemoMode ? 'Exit Demo' : 'Load Demo',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: vm.isDemoMode ? const Color(0xFFF59E0B) : null,
+                            ),
+                          ),
                           style: OutlinedButton.styleFrom(
+                            side: vm.isDemoMode
+                                ? const BorderSide(color: Color(0xFFF59E0B))
+                                : null,
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                           ),
@@ -615,13 +699,16 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
         ],
 
         // Quick Presets Bar
-        CapturePresetsBar(
-          presets: vm.presets,
-          activePresetId: vm.activePresetId,
-          onSelectPreset: (CapturePreset preset) {
-            vm.applyPreset(preset);
-            _packetLimitController.text = vm.packetCountLimit.toString();
-          },
+        KeyedSubtree(
+          key: _presetsAndFiltersKey,
+          child: CapturePresetsBar(
+            presets: vm.presets,
+            activePresetId: vm.activePresetId,
+            onSelectPreset: (CapturePreset preset) {
+              vm.applyPreset(preset);
+              _packetLimitController.text = vm.packetCountLimit.toString();
+            },
+          ),
         ),
         const SizedBox(height: 18),
 
@@ -1394,28 +1481,227 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
         ),
         const SizedBox(height: 16),
 
-        // Capture Vault / History Card
-        _buildSectionCard(
-          title: 'Recent Capture Vault',
-          icon: Icons.history,
-          trailing: vm.history.isNotEmpty && !vm.isRemoteTarget
-              ? TextButton.icon(
-                  onPressed: () => vm.openActiveDirectory(),
-                  icon: const Icon(Icons.folder_open, size: 14),
-                  label: const Text(
-                    'Open Storage Folder',
-                    style: TextStyle(fontSize: 11),
-                  ),
-                )
-              : null,
-          child: CaptureHistoryCard(
-            history: vm.history,
-            onOpenFolder: (item) => vm.openHistoryItemFolder(item),
-            onOpenWireshark: (item) => vm.openHistoryItemInWireshark(item),
-            onRemove: (item) => vm.removeHistoryItem(item),
+        // Live Packet Stream Table (Step 4 target)
+        KeyedSubtree(
+          key: _livePacketTableKey,
+          child: _buildLivePacketStreamCard(vm),
+        ),
+        const SizedBox(height: 16),
+
+        // Packet Dissection & Recent Capture Vault (Step 5 target)
+        KeyedSubtree(
+          key: _packetDissectionExportKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (vm.selectedDemoPacket != null) ...[
+                _buildPacketDissectionCard(vm.selectedDemoPacket!),
+                const SizedBox(height: 16),
+              ],
+              _buildSectionCard(
+                title: 'Recent Capture Vault',
+                icon: Icons.history,
+                trailing: vm.history.isNotEmpty && !vm.isRemoteTarget
+                    ? TextButton.icon(
+                        onPressed: () => vm.openActiveDirectory(),
+                        icon: const Icon(Icons.folder_open, size: 14),
+                        label: const Text(
+                          'Open Storage Folder',
+                          style: TextStyle(fontSize: 11),
+                        ),
+                      )
+                    : null,
+                child: CaptureHistoryCard(
+                  history: vm.history,
+                  onOpenFolder: (item) => vm.openHistoryItemFolder(item),
+                  onOpenWireshark: (item) => vm.openHistoryItemInWireshark(item),
+                  onRemove: (item) => vm.removeHistoryItem(item),
+                  onLoadDemo: vm.isCapturing ? null : () => startDemoWalkthrough(vm),
+                ),
+              ),
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildLivePacketStreamCard(TSharkCaptureViewModel vm) {
+    return _buildSectionCard(
+      title: 'Live Packet Stream',
+      icon: Icons.view_list_outlined,
+      trailing: vm.demoPackets.isNotEmpty
+          ? Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppTheme.accentEmerald.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: AppTheme.accentEmerald.withValues(alpha: 0.4),
+                ),
+              ),
+              child: Text(
+                '${vm.demoPackets.length} Packets',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.accentEmerald,
+                ),
+              ),
+            )
+          : null,
+      child: vm.demoPackets.isEmpty
+          ? Container(
+              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF13171F),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.borderColor),
+              ),
+              child: const Center(
+                child: Text(
+                  'No live packets in stream. Start a capture or click "Load Demo" to preview decoded frames.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 11.5, color: Colors.white38),
+                ),
+              ),
+            )
+          : Container(
+              decoration: BoxDecoration(
+                color: const Color(0xFF13171F),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.borderColor),
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: vm.demoPackets.length,
+                separatorBuilder: (_, _) =>
+                    const Divider(height: 1, color: AppTheme.borderColor),
+                itemBuilder: (context, index) {
+                  final pkt = vm.demoPackets[index];
+                  final isSelected = vm.selectedDemoPacket?.number == pkt.number;
+                  return InkWell(
+                    onTap: () => vm.selectDemoPacket(pkt),
+                    child: Container(
+                      color: isSelected
+                          ? AppTheme.accentCyan.withValues(alpha: 0.15)
+                          : Colors.transparent,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 24,
+                            child: Text(
+                              '#${pkt.number}',
+                              style: const TextStyle(
+                                fontFamily: 'Consolas',
+                                fontSize: 11,
+                                color: Colors.white54,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentCyan.withValues(alpha: 0.18),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              pkt.protocol,
+                              style: const TextStyle(
+                                fontFamily: 'Consolas',
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.accentCyan,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  '${pkt.source} → ${pkt.destination} (${pkt.length} B)',
+                                  style: const TextStyle(
+                                    fontFamily: 'Consolas',
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  pkt.info,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Colors.white60,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+    );
+  }
+
+  Widget _buildPacketDissectionCard(DemoPacket packet) {
+    return _buildSectionCard(
+      title: 'Packet Dissection (Frame #${packet.number} • ${packet.protocol})',
+      icon: Icons.account_tree_outlined,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF13171F),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppTheme.borderColor),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: packet.dissectionLayers.map((layer) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 14,
+                    color: AppTheme.accentCyan,
+                  ),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      layer,
+                      style: const TextStyle(
+                        fontFamily: 'Consolas',
+                        fontSize: 11,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ),
+      ),
     );
   }
 

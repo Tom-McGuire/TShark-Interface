@@ -10,12 +10,14 @@ class CaptureHistoryCard extends StatelessWidget {
     required this.onOpenFolder,
     required this.onOpenWireshark,
     required this.onRemove,
+    this.onLoadDemo,
   });
 
   final List<CaptureHistoryItem> history;
   final ValueChanged<CaptureHistoryItem> onOpenFolder;
   final ValueChanged<CaptureHistoryItem> onOpenWireshark;
   final ValueChanged<CaptureHistoryItem> onRemove;
+  final VoidCallback? onLoadDemo;
 
   @override
   Widget build(BuildContext context) {
@@ -27,15 +29,27 @@ class CaptureHistoryCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: AppTheme.borderColor),
         ),
-        child: const Center(
+        child: Center(
           child: Column(
             children: [
-              Icon(Icons.history_toggle_off, size: 28, color: Colors.white24),
-              SizedBox(height: 8),
-              Text(
+              const Icon(Icons.history_toggle_off, size: 28, color: Colors.white24),
+              const SizedBox(height: 8),
+              const Text(
                 'No captures recorded in this session yet',
                 style: TextStyle(fontSize: 12, color: Colors.white38),
               ),
+              if (onLoadDemo != null) ...[
+                const SizedBox(height: 12),
+                OutlinedButton.icon(
+                  onPressed: onLoadDemo,
+                  icon: const Icon(Icons.play_circle_outline, size: 15),
+                  label: const Text('Load Demo', style: TextStyle(fontSize: 11)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

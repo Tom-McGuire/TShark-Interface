@@ -428,5 +428,33 @@ void main() {
       expect(vm.previewCommandLine, contains('-i eth0'));
       expect(vm.previewCommandLine, contains('-w '));
     });
+
+    test('loadDemoWalkthroughData loads demo preset and packets, and clearCapture resets state', () async {
+      final vm = await createViewModel();
+      addTearDown(() => vm.dispose());
+
+      expect(vm.isDemoMode, isFalse);
+      expect(vm.demoPackets, isEmpty);
+      expect(vm.selectedDemoPacket, isNull);
+
+      vm.loadDemoWalkthroughData();
+      expect(vm.isDemoMode, isTrue);
+      expect(vm.activePresetId, equals('web_traffic'));
+      expect(vm.captureFilter, isNotEmpty);
+      expect(vm.demoPackets, isNotEmpty);
+      expect(vm.selectedDemoPacket, equals(vm.demoPackets.first));
+
+      // Selecting another packet updates selectedDemoPacket
+      vm.selectDemoPacket(vm.demoPackets.last);
+      expect(vm.selectedDemoPacket, equals(vm.demoPackets.last));
+
+      // Clearing capture resets demo mode, packets, and filter
+      vm.clearCapture();
+      expect(vm.isDemoMode, isFalse);
+      expect(vm.demoPackets, isEmpty);
+      expect(vm.selectedDemoPacket, isNull);
+      expect(vm.captureFilter, isEmpty);
+      expect(vm.activePresetId, equals('all_traffic'));
+    });
   });
 }
