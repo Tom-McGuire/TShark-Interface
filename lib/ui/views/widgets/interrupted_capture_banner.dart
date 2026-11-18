@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:intl/intl.dart';
 import 'package:tshark_interface/models/active_capture_session.dart';
 import 'package:tshark_interface/ui/theme/app_theme.dart';
@@ -25,7 +25,9 @@ class InterruptedCaptureBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF261D12),
+        color: AppTheme.isDark
+            ? const Color(0xFF261D12)
+            : AppTheme.warning.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.accentAmber.withValues(alpha: 0.6)),
       ),
@@ -40,7 +42,7 @@ class InterruptedCaptureBanner extends StatelessWidget {
                   color: AppTheme.accentAmber.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.power_off,
                   color: AppTheme.accentAmber,
                   size: 20,
@@ -51,7 +53,7 @@ class InterruptedCaptureBanner extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Row(
+                    Row(
                       children: [
                         Text(
                           'INTERRUPTED CAPTURE DETECTED',
@@ -62,12 +64,12 @@ class InterruptedCaptureBanner extends StatelessWidget {
                             color: AppTheme.accentAmber,
                           ),
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Text(
                           '(System Reboot or Sudden Shutdown)',
                           style: TextStyle(
                             fontSize: 11,
-                            color: Colors.white54,
+                            color: AppTheme.textSecondary,
                           ),
                         ),
                       ],
@@ -75,13 +77,13 @@ class InterruptedCaptureBanner extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       'A previous capture was active when the system stopped at $formattedStart.',
-                      style: const TextStyle(fontSize: 12.5, color: Colors.white),
+                      style: TextStyle(fontSize: 12.5, color: AppTheme.textPrimary),
                     ),
                   ],
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.close, size: 18, color: Colors.white54),
+                icon: Icon(Icons.close, size: 18, color: AppTheme.textSecondary),
                 tooltip: 'Dismiss Notice',
                 onPressed: onDismiss,
               ),
@@ -123,14 +125,14 @@ class InterruptedCaptureBanner extends StatelessWidget {
                 label: const Text('Load Settings (Review First)'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: AppTheme.accentCyan,
-                  side: const BorderSide(color: AppTheme.accentCyan),
+                  side: BorderSide(color: AppTheme.accentCyan),
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 ),
               ),
               const SizedBox(width: 10),
               TextButton(
                 onPressed: onDismiss,
-                child: const Text('Discard', style: TextStyle(color: Colors.white54)),
+                child: Text('Discard', style: TextStyle(color: AppTheme.textSecondary)),
               ),
             ],
           ),
@@ -143,7 +145,7 @@ class InterruptedCaptureBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B24),
+        color: AppTheme.surfaceHigh,
         borderRadius: BorderRadius.circular(6),
         border: Border.all(color: AppTheme.borderColor),
       ),
@@ -154,14 +156,14 @@ class InterruptedCaptureBanner extends StatelessWidget {
           const SizedBox(width: 5),
           Text(
             '$label: ',
-            style: const TextStyle(fontSize: 11, color: Colors.white54),
+            style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
           ),
           Text(
             value,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w600,
-              color: Colors.white,
+              color: AppTheme.textPrimary,
             ),
           ),
         ],

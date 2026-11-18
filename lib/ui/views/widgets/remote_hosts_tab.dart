@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../../../models/active_capture_session.dart';
 import '../../../models/remote_host.dart';
 import '../../../ui/theme/app_theme.dart';
@@ -64,7 +64,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF161B24),
+            color: AppTheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: AppTheme.borderColor),
           ),
@@ -76,14 +76,14 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
                   color: AppTheme.accentCyan.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
+                child: Icon(
                   Icons.dns_outlined,
                   color: AppTheme.accentCyan,
                   size: 22,
                 ),
               ),
               const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -92,12 +92,13 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
                       style: TextStyle(
                         fontSize: 15,
                         fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    const SizedBox(height: 2),
                     Text(
                       'Configure remote Linux or Windows SSH hosts, inspect live TShark status, or clear offline sessions.',
-                      style: TextStyle(fontSize: 12, color: Colors.white60),
+                      style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                     ),
                   ],
                 ),
@@ -109,8 +110,8 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
                   icon: const Icon(Icons.sync, size: 16),
                   label: const Text('Refresh All Statuses'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: const BorderSide(color: AppTheme.borderColor),
+                    foregroundColor: AppTheme.textPrimary,
+                    side: BorderSide(color: AppTheme.borderColor),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -121,7 +122,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
                 label: const Text('Add Remote Machine'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.accentCyan,
-                  foregroundColor: Colors.black,
+                  foregroundColor: AppTheme.isDark ? Colors.black : Colors.white,
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 12,
@@ -151,7 +152,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B24),
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.borderColor),
       ),
@@ -160,18 +161,22 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
           Icon(
             Icons.lan_outlined,
             size: 46,
-            color: Colors.white.withValues(alpha: 0.25),
+            color: AppTheme.textMuted,
           ),
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'No Remote SSH Machines Saved',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
+            ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Add a remote Linux or Windows machine with SSH access to discover its network interfaces and run headless TShark captures remotely.',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12.5, color: Colors.white54),
+            style: TextStyle(fontSize: 12.5, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 20),
           ElevatedButton.icon(
@@ -180,7 +185,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
             label: const Text('Add Your First Remote Machine'),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.accentCyan,
-              foregroundColor: Colors.black,
+              foregroundColor: AppTheme.isDark ? Colors.black : Colors.white,
             ),
           ),
         ],
@@ -209,7 +214,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B24),
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: borderColor),
       ),
@@ -237,15 +242,16 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
                       children: [
                         Text(
                           host.name,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 14.5,
                             fontWeight: FontWeight.bold,
+                            color: AppTheme.textPrimary,
                           ),
                         ),
                         const SizedBox(width: 10),
                         _buildBadge(
                           label: host.osType.label,
-                          color: Colors.white54,
+                          color: AppTheme.textSecondary,
                         ),
                         if (host.detectedTSharkVersion != null) ...[
                           const SizedBox(width: 8),
@@ -259,7 +265,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
                     const SizedBox(height: 4),
                     Text(
                       '${host.username}@${host.host}:${host.port}  •  Default Output: ${host.defaultOutputDirectory}${host.useSudo ? "  •  sudo enabled" : ""}',
-                      style: const TextStyle(fontSize: 12, color: Colors.white60),
+                      style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                     ),
                   ],
                 ),
@@ -278,7 +284,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
                 style: OutlinedButton.styleFrom(
                   visualDensity: VisualDensity.compact,
                   foregroundColor: AppTheme.accentCyan,
-                  side: const BorderSide(color: AppTheme.borderColor),
+                  side: BorderSide(color: AppTheme.borderColor),
                 ),
               ),
               const SizedBox(width: 6),
@@ -288,7 +294,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
                 onPressed: () => _openAddEditDialog(host),
               ),
               IconButton(
-                icon: const Icon(
+                icon: Icon(
                   Icons.delete_outline,
                   size: 18,
                   color: AppTheme.accentRed,
@@ -330,7 +336,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.radio_button_checked,
             color: AppTheme.accentEmerald,
             size: 20,
@@ -342,7 +348,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
               children: [
                 Row(
                   children: [
-                    const Text(
+                    Text(
                       'REMOTE CAPTURE RUNNING',
                       style: TextStyle(
                         fontSize: 11.5,
@@ -354,14 +360,14 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
                     const SizedBox(width: 10),
                     Text(
                       'PID ${session.pid}  •  Interface: ${session.interfaceName}',
-                      style: const TextStyle(fontSize: 12, color: Colors.white),
+                      style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
                     ),
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Elapsed: ${vm.formatDuration(session.elapsed)}  •  Size: ${vm.formatBytes(session.lastKnownSizeBytes)}  •  Remote File: ${session.targetFilePath}',
-                  style: const TextStyle(fontSize: 11.5, color: Colors.white70),
+                  style: TextStyle(fontSize: 11.5, color: AppTheme.textPrimary),
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
@@ -386,7 +392,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
             icon: const Icon(Icons.cleaning_services_outlined, size: 15),
             label: const Text('Forget Local Record'),
             style: TextButton.styleFrom(
-              foregroundColor: Colors.white70,
+              foregroundColor: AppTheme.textPrimary,
               textStyle: const TextStyle(fontSize: 11.5),
             ),
           ),
@@ -423,7 +429,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.warning_amber_rounded,
             color: AppTheme.accentAmber,
             size: 22,
@@ -435,7 +441,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
               children: [
                 Text(
                   'STORED REMOTE SESSION (PID ${session.pid}) — HOST UNREACHABLE',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 11.5,
                     fontWeight: FontWeight.bold,
                     color: AppTheme.accentAmber,
@@ -445,12 +451,12 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
                 Text(
                   session.unreachableReason ??
                       'Could not connect via SSH to check if PID ${session.pid} on ${session.interfaceName} is still running.',
-                  style: const TextStyle(fontSize: 11.5, color: Colors.white70),
+                  style: TextStyle(fontSize: 11.5, color: AppTheme.textPrimary),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   'Remote File: ${session.targetFilePath}',
-                  style: const TextStyle(fontSize: 11, color: Colors.white54),
+                  style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                 ),
               ],
             ),
@@ -471,7 +477,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
             style: OutlinedButton.styleFrom(
               visualDensity: VisualDensity.compact,
               foregroundColor: AppTheme.accentAmber,
-              side: const BorderSide(color: AppTheme.accentAmber),
+              side: BorderSide(color: AppTheme.accentAmber),
             ),
           ),
           const SizedBox(width: 8),
@@ -494,18 +500,18 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: const Color(0xFF11151C),
+        color: AppTheme.surfaceHigh,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppTheme.borderColor),
       ),
       child: Row(
         children: [
-          const Icon(Icons.check_circle_outline, size: 16, color: Colors.white38),
+          Icon(Icons.check_circle_outline, size: 16, color: AppTheme.textMuted),
           const SizedBox(width: 8),
-          const Expanded(
+          Expanded(
             child: Text(
               'Status: Idle — No active TShark capture tracked on this machine.',
-              style: TextStyle(fontSize: 12, color: Colors.white60),
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
           ),
           OutlinedButton.icon(
@@ -515,7 +521,7 @@ class _RemoteHostsTabState extends State<RemoteHostsTab> {
             style: OutlinedButton.styleFrom(
               visualDensity: VisualDensity.compact,
               foregroundColor: AppTheme.accentCyan,
-              side: const BorderSide(color: AppTheme.borderColor),
+              side: BorderSide(color: AppTheme.borderColor),
             ),
           ),
         ],

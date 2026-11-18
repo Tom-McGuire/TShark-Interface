@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:tshark_interface/models/capture_preset.dart';
 import 'package:tshark_interface/ui/theme/app_theme.dart';
 
@@ -44,14 +44,14 @@ class CapturePresetsBar extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Icon(Icons.flash_on, size: 16, color: AppTheme.accentAmber),
+            Icon(Icons.flash_on, size: 16, color: AppTheme.accentAmber),
             const SizedBox(width: 6),
-            const Text(
+            Text(
               'Quick Presets',
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: Colors.white,
+                color: AppTheme.textPrimary,
               ),
             ),
             const SizedBox(width: 8),
@@ -59,7 +59,7 @@ class CapturePresetsBar extends StatelessWidget {
               child: Text(
                 'Click a preset to configure common filters and modes automatically',
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
               ),
             ),
           ],
@@ -86,7 +86,9 @@ class CapturePresetsBar extends StatelessWidget {
                       Icon(
                         _getIcon(preset.iconName),
                         size: 14,
-                        color: isSelected ? Colors.black : AppTheme.accentCyan,
+                        color: isSelected
+                            ? (AppTheme.isDark ? Colors.black : Colors.white)
+                            : AppTheme.accentCyan,
                       ),
                       const SizedBox(width: 6),
                       Text(preset.title),
@@ -99,11 +101,13 @@ class CapturePresetsBar extends StatelessWidget {
                     }
                   },
                   selectedColor: AppTheme.accentCyan,
-                  backgroundColor: const Color(0xFF161B24),
+                  backgroundColor: AppTheme.surfaceHigh,
                   labelStyle: TextStyle(
                     fontSize: 12,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                    color: isSelected ? Colors.black : Colors.white,
+                    color: isSelected
+                        ? (AppTheme.isDark ? Colors.black : Colors.white)
+                        : AppTheme.textPrimary,
                   ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),

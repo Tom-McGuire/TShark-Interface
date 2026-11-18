@@ -1,6 +1,7 @@
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
+import '../theme/app_theme.dart';
 
 class GuidedTourStep {
   final GlobalKey targetKey;
@@ -155,7 +156,10 @@ class _GuidedTourOverlayState extends State<GuidedTourOverlay> {
                   behavior: HitTestBehavior.opaque,
                   onTap: () {}, // Block stray clicks outside controls
                   child: CustomPaint(
-                    painter: _SpotlightPainter(targetRect: _targetRect),
+                    painter: _SpotlightPainter(
+                      targetRect: _targetRect,
+                      isDark: AppTheme.isDark,
+                    ),
                   ),
                 ),
               ),
@@ -215,14 +219,14 @@ class _GuidedTourOverlayState extends State<GuidedTourOverlay> {
         child: Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
+            color: AppTheme.surface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: const Color(0xFF007ACC), width: 1.5),
-            boxShadow: const [
+            border: Border.all(color: AppTheme.accent, width: 1.5),
+            boxShadow: [
               BoxShadow(
-                color: Colors.black87,
+                color: AppTheme.isDark ? Colors.black87 : Colors.black26,
                 blurRadius: 20,
-                offset: Offset(0, 8),
+                offset: const Offset(0, 8),
               ),
             ],
           ),
@@ -240,20 +244,20 @@ class _GuidedTourOverlayState extends State<GuidedTourOverlay> {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF007ACC).withValues(alpha: 0.2),
+                        color: AppTheme.accent.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(
-                          color: const Color(0xFF007ACC).withValues(alpha: 0.5),
+                          color: AppTheme.accent.withValues(alpha: 0.5),
                         ),
                       ),
                       child: Text(
                         'DEMO WALKTHROUGH • STEP ${_currentIndex + 1} OF ${widget.steps.length}',
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'Consolas',
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF38BDF8),
+                          color: AppTheme.accentCyan,
                           letterSpacing: 0.5,
                         ),
                       ),
@@ -263,12 +267,12 @@ class _GuidedTourOverlayState extends State<GuidedTourOverlay> {
                   InkWell(
                     onTap: widget.onFinish,
                     borderRadius: BorderRadius.circular(4),
-                    child: const Padding(
-                      padding: EdgeInsets.all(2),
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
                       child: Icon(
                         Icons.close,
                         size: 16,
-                        color: Colors.white54,
+                        color: AppTheme.textSecondary,
                       ),
                     ),
                   ),
@@ -277,19 +281,19 @@ class _GuidedTourOverlayState extends State<GuidedTourOverlay> {
               const SizedBox(height: 10),
               Text(
                 step.title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  color: AppTheme.textPrimary,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
                 step.description,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   height: 1.45,
-                  color: Color(0xFFD4D4D4),
+                  color: AppTheme.textSecondary,
                 ),
               ),
               const SizedBox(height: 16),
@@ -299,7 +303,7 @@ class _GuidedTourOverlayState extends State<GuidedTourOverlay> {
                   TextButton(
                     onPressed: widget.onFinish,
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFFF59E0B),
+                      foregroundColor: AppTheme.warning,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
                         vertical: 6,
@@ -319,8 +323,8 @@ class _GuidedTourOverlayState extends State<GuidedTourOverlay> {
                         OutlinedButton(
                           onPressed: _prevStep,
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.white70,
-                            side: const BorderSide(color: Color(0xFF3E3E42)),
+                            foregroundColor: AppTheme.textSecondary,
+                            side: BorderSide(color: AppTheme.border),
                             padding: const EdgeInsets.symmetric(
                               horizontal: 10,
                               vertical: 6,
@@ -336,8 +340,8 @@ class _GuidedTourOverlayState extends State<GuidedTourOverlay> {
                         onPressed: _nextStep,
                         style: FilledButton.styleFrom(
                           backgroundColor: isLast
-                              ? const Color(0xFF10B981)
-                              : const Color(0xFF007ACC),
+                              ? AppTheme.success
+                              : AppTheme.accent,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
@@ -372,8 +376,10 @@ class _GuidedTourOverlayState extends State<GuidedTourOverlay> {
 
 class _SpotlightPainter extends CustomPainter {
   final Rect? targetRect;
+  final bool isDark;
 
-  _SpotlightPainter({required this.targetRect});
+  _SpotlightPainter({required this.targetRect, bool? isDark})
+      : isDark = isDark ?? AppTheme.isDark;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -402,14 +408,14 @@ class _SpotlightPainter extends CustomPainter {
 
     // Draw glowing accent border around the spotlight cutout
     final glowPaint = Paint()
-      ..color = const Color(0xFF007ACC).withValues(alpha: 0.45)
+      ..color = AppTheme.accent.withValues(alpha: 0.45)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 4
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);
     canvas.drawRRect(rrect, glowPaint);
 
     final borderPaint = Paint()
-      ..color = const Color(0xFF38BDF8)
+      ..color = AppTheme.accentCyan
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
     canvas.drawRRect(rrect, borderPaint);
@@ -417,5 +423,5 @@ class _SpotlightPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SpotlightPainter oldDelegate) =>
-      oldDelegate.targetRect != targetRect;
+      oldDelegate.targetRect != targetRect || oldDelegate.isDark != isDark;
 }

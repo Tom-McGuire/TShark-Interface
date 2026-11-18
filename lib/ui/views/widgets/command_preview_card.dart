@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:tshark_interface/services/system_service.dart';
 import 'package:tshark_interface/ui/theme/app_theme.dart';
 
@@ -43,7 +43,7 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF0F141C),
+        color: AppTheme.surfaceHigh,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.borderColor),
       ),
@@ -53,16 +53,16 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
           // Header Bar
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: const BoxDecoration(
-              color: Color(0xFF161B24),
-              borderRadius: BorderRadius.vertical(top: Radius.circular(11)),
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
               border: Border(bottom: BorderSide(color: AppTheme.borderColor)),
             ),
             child: Row(
               children: [
-                const Icon(Icons.terminal, size: 16, color: AppTheme.accentCyan),
+                Icon(Icons.terminal, size: 16, color: AppTheme.accentCyan),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
                     'Generated TShark CLI Command',
                     overflow: TextOverflow.ellipsis,
@@ -70,6 +70,7 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                       letterSpacing: 0.3,
+                      color: AppTheme.textPrimary,
                     ),
                   ),
                 ),
@@ -78,9 +79,9 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
+                    Text(
                       'Detached (Headless)',
-                      style: TextStyle(fontSize: 11, color: Colors.white70),
+                      style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
                     ),
                     const SizedBox(width: 4),
                     Transform.scale(
@@ -99,8 +100,8 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
           // Sub-bar for Shell Format Selector and Copy Action
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: const BoxDecoration(
-              color: Color(0xFF121720),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceHigh,
               border: Border(bottom: BorderSide(color: AppTheme.borderColor)),
             ),
             child: Row(
@@ -109,7 +110,7 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
                 Container(
                   padding: const EdgeInsets.all(2),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0F141C),
+                    color: AppTheme.surfaceHigh,
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(color: AppTheme.borderColor),
                   ),
@@ -130,7 +131,7 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: _usePowerShell ? FontWeight.bold : FontWeight.normal,
-                              color: _usePowerShell ? AppTheme.accentCyan : Colors.white60,
+                              color: _usePowerShell ? AppTheme.accentCyan : AppTheme.textSecondary,
                             ),
                           ),
                         ),
@@ -149,7 +150,7 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
                             style: TextStyle(
                               fontSize: 10,
                               fontWeight: !_usePowerShell ? FontWeight.bold : FontWeight.normal,
-                              color: !_usePowerShell ? AppTheme.accentCyan : Colors.white60,
+                              color: !_usePowerShell ? AppTheme.accentCyan : AppTheme.textSecondary,
                             ),
                           ),
                         ),
@@ -170,7 +171,7 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
                     _copied ? 'Copied!' : 'Copy CLI',
                     style: TextStyle(
                       fontSize: 11,
-                      color: _copied ? AppTheme.accentEmerald : Colors.white,
+                      color: _copied ? AppTheme.accentEmerald : AppTheme.textPrimary,
                     ),
                   ),
                   style: OutlinedButton.styleFrom(
@@ -189,10 +190,10 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
             padding: const EdgeInsets.all(12),
             child: SelectableText(
               _displayCommand,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Consolas',
                 fontSize: 12.5,
-                color: Color(0xFF7DD3FC),
+                color: AppTheme.isDark ? const Color(0xFF7DD3FC) : AppTheme.accent,
                 height: 1.4,
               ),
             ),

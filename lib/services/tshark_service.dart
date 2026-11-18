@@ -159,6 +159,106 @@ class TSharkService {
     return interfaces;
   }
 
+  /// Discovers local host IPv4 addresses keyed by interface name (and lowercase name).
+  static Future<Map<String, List<String>>> getHostIpv4Map() async {
+    try {
+      final osInterfaces = await NetworkInterface.list(
+        includeLoopback: true,
+        type: InternetAddressType.IPv4,
+      );
+      final grouped = <String, Set<String>>{};
+      for (final osIface in osInterfaces) {
+        final ips = osIface.addresses
+            .where((a) => a.type == InternetAddressType.IPv4 && a.address.isNotEmpty)
+            .map((a) => a.address);
+        if (ips.isEmpty) continue;
+        grouped.putIfAbsent(osIface.name, () => <String>{}).addAll(ips);
+        final lower = osIface.name.toLowerCase();
+        grouped.putIfAbsent(lower, () => <String>{}).addAll(ips);
+      }
+      return {
+        for (final entry in grouped.entries)
+          entry.key: List.unmodifiable(entry.value),
+      };
+    } catch (e) {
+      debugPrint('getHostIpv4Map error: $e');
+      return {};
+    }
+  }
+
+  /// Instance wrapper around [getHostIpv4Map] to support test overrides.
+  Future<Map<String, List<String>>> fetchHostIpv4Map() => getHostIpv4Map();
+
+  static String _normalizeInterfaceKey(String raw) {
+    return raw
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), ' ')
+        .trim();
+  }
+
+  /// Enriches parsed [CaptureInterface] objects with matching OS IPv4 addresses.
+  static List<CaptureInterface> enrichInterfacesWithIpv4(
+    List<CaptureInterface> interfaces,
+    Map<String, List<String>> osInterfaceIps,
+  ) {
+    if (interfaces.isEmpty || osInterfaceIps.isEmpty) {
+      return interfaces;
+    }
+
+    final exactLowerMap = <String, Set<String>>{};
+    final normalizedMap = <String, Set<String>>{};
+    for (final entry in osInterfaceIps.entries) {
+      final ips = entry.value.map((e) => e.trim()).where((e) => e.isNotEmpty);
+      if (ips.isEmpty) continue;
+
+      final exactKey = entry.key.trim().toLowerCase();
+      if (exactKey.isNotEmpty) {
+        exactLowerMap.putIfAbsent(exactKey, () => <String>{}).addAll(ips);
+      }
+
+      final normKey = _normalizeInterfaceKey(entry.key);
+      if (normKey.isNotEmpty) {
+        normalizedMap.putIfAbsent(normKey, () => <String>{}).addAll(ips);
+      }
+    }
+
+    return interfaces.map((iface) {
+      final candidates = <String>[
+        iface.name,
+        if (iface.friendlyName != null && iface.friendlyName!.isNotEmpty)
+          iface.friendlyName!,
+      ];
+
+      final matchedIps = <String>{...iface.ipv4Addresses};
+
+      var foundExact = false;
+      for (final candidate in candidates) {
+        final key = candidate.trim().toLowerCase();
+        final ips = exactLowerMap[key];
+        if (ips != null && ips.isNotEmpty) {
+          matchedIps.addAll(ips);
+          foundExact = true;
+        }
+      }
+
+      if (!foundExact) {
+        for (final candidate in candidates) {
+          final normKey = _normalizeInterfaceKey(candidate);
+          final ips = normalizedMap[normKey];
+          if (ips != null && ips.isNotEmpty) {
+            matchedIps.addAll(ips);
+          }
+        }
+      }
+
+      if (matchedIps.isEmpty) {
+        return iface;
+      }
+      return iface.copyWith(ipv4Addresses: List.unmodifiable(matchedIps));
+    }).toList();
+  }
+
   /// Queries system capture interfaces using `tshark -D`.
   Future<List<CaptureInterface>> getInterfaces(String tsharkPath) async {
     try {
@@ -168,7 +268,10 @@ class TSharkService {
         return [];
       }
 
-      return parseInterfacesOutput(res.stdout.toString());
+      final parsed = parseInterfacesOutput(res.stdout.toString());
+      if (parsed.isEmpty) return parsed;
+      final ipv4Map = await fetchHostIpv4Map();
+      return enrichInterfacesWithIpv4(parsed, ipv4Map);
     } catch (e) {
       debugPrint('getInterfaces error: $e');
       return [];

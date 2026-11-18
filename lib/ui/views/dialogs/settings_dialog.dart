@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:tshark_interface/models/capture_config.dart';
 import 'package:tshark_interface/ui/theme/app_theme.dart';
@@ -67,16 +67,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: const Color(0xFF161B22),
+      backgroundColor: AppTheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: AppTheme.borderColor),
+        side: BorderSide(color: AppTheme.borderColor),
       ),
-      title: const Row(
+      title: Row(
         children: [
           Icon(Icons.settings, color: AppTheme.accentCyan, size: 20),
-          SizedBox(width: 8),
-          Text('Capture Engine Settings', style: TextStyle(fontSize: 16)),
+          const SizedBox(width: 8),
+          Text(
+            'Capture Engine Settings',
+            style: TextStyle(fontSize: 16, color: AppTheme.textPrimary),
+          ),
         ],
       ),
       content: SizedBox(
@@ -86,14 +89,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // TShark Executable Path
-              const Text(
+              Text(
                 'TShark Executable Location',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'Leave blank to automatically detect Wireshark installation in default system paths.',
-                style: TextStyle(fontSize: 11, color: Colors.white54),
+                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 8),
               Row(
@@ -102,9 +105,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     child: TextField(
                       controller: _tsharkPathController,
                       style: const TextStyle(fontSize: 12, fontFamily: 'Consolas'),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: r'C:\Program Files\Wireshark\tshark.exe',
-                        hintStyle: TextStyle(fontSize: 11, color: Colors.white30),
+                        hintStyle: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                       ),
                     ),
                   ),
@@ -115,7 +118,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     label: const Text('Browse'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTheme.accentCyan,
-                      side: const BorderSide(color: AppTheme.borderColor),
+                      side: BorderSide(color: AppTheme.borderColor),
                     ),
                   ),
                 ],
@@ -123,14 +126,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
               const SizedBox(height: 20),
 
               // Default Output Directory
-              const Text(
+              Text(
                 'Default Output Directory',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'Where capture PCAP files and subdirectories are saved by default.',
-                style: TextStyle(fontSize: 11, color: Colors.white54),
+                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 8),
               Row(
@@ -139,9 +142,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     child: TextField(
                       controller: _defaultDirController,
                       style: const TextStyle(fontSize: 12),
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: r'C:\Users\username\Documents\TSharkCaptures',
-                        hintStyle: TextStyle(fontSize: 11, color: Colors.white30),
+                        hintStyle: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                       ),
                     ),
                   ),
@@ -152,7 +155,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                     label: const Text('Browse'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTheme.accentCyan,
-                      side: const BorderSide(color: AppTheme.borderColor),
+                      side: BorderSide(color: AppTheme.borderColor),
                     ),
                   ),
                 ],
@@ -160,14 +163,14 @@ class _SettingsDialogState extends State<SettingsDialog> {
               const SizedBox(height: 20),
 
               // Default Recovery Policy
-              const Text(
+              Text(
                 'Default Reboot & Crash Recovery Policy',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
               ),
               const SizedBox(height: 4),
-              const Text(
+              Text(
                 'Initial policy assigned when configuring new packet captures.',
-                style: TextStyle(fontSize: 11, color: Colors.white54),
+                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<RecoveryPolicy>(
@@ -196,19 +199,19 @@ class _SettingsDialogState extends State<SettingsDialog> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF13171F),
+                  color: AppTheme.surfaceHigh,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppTheme.borderColor),
                 ),
-                child: const Row(
+                child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Icon(Icons.lightbulb_outline, size: 16, color: AppTheme.accentCyan),
-                    SizedBox(width: 8),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Tip for Unattended Machines: Set policy to "Auto-Restart on Boot", then place a shortcut to T-Shark Interface in your Windows Startup folder (press Win+R and type "shell:startup").',
-                        style: TextStyle(fontSize: 11, color: Colors.white70, height: 1.4),
+                        style: TextStyle(fontSize: 11, color: AppTheme.textPrimary, height: 1.4),
                       ),
                     ),
                   ],
@@ -220,7 +223,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF0F141C),
+                  color: AppTheme.surfaceHigh,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppTheme.borderColor),
                 ),
@@ -253,7 +256,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                           const SizedBox(height: 2),
                           Text(
                             widget.viewModel.tsharkVersion ?? 'Please ensure Wireshark/TShark is installed.',
-                            style: const TextStyle(fontSize: 11, color: Colors.white60),
+                            style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                           ),
                         ],
                       ),
@@ -268,13 +271,13 @@ class _SettingsDialogState extends State<SettingsDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel', style: TextStyle(color: Colors.white54)),
+          child: Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
         ),
         ElevatedButton(
           onPressed: _save,
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.accentCyan,
-            foregroundColor: Colors.black,
+            foregroundColor: AppTheme.isDark ? Colors.black : Colors.white,
           ),
           child: const Text('Save Settings'),
         ),

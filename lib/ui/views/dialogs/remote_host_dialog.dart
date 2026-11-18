@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../../../models/remote_host.dart';
 import '../../../services/remote_ssh_service.dart';
 import '../../../ui/theme/app_theme.dart';
@@ -148,18 +148,22 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
     final isEdit = widget.existingHost != null;
 
     return AlertDialog(
-      backgroundColor: const Color(0xFF161B24),
+      backgroundColor: AppTheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: const BorderSide(color: AppTheme.borderColor),
+        side: BorderSide(color: AppTheme.borderColor),
       ),
       title: Row(
         children: [
-          const Icon(Icons.dns_outlined, color: AppTheme.accentCyan, size: 22),
+          Icon(Icons.dns_outlined, color: AppTheme.accentCyan, size: 22),
           const SizedBox(width: 10),
           Text(
             isEdit ? 'Edit Remote SSH Machine' : 'Add Remote SSH Machine',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
+            ),
           ),
         ],
       ),
@@ -182,7 +186,7 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
                   ),
                   child: Text(
                     _validationError!,
-                    style: const TextStyle(fontSize: 12, color: AppTheme.accentRed),
+                    style: TextStyle(fontSize: 12, color: AppTheme.accentRed),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -345,16 +349,16 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
                   'Prefix TShark with "sudo -n" (Linux)',
                   style: TextStyle(fontSize: 12.5),
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Enable if logging in as a non-root Linux user with passwordless sudo.',
-                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                  style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                 ),
                 value: _useSudo,
                 onChanged: (val) => setState(() => _useSudo = val),
                 activeThumbColor: AppTheme.accentCyan,
               ),
 
-              const Divider(height: 20, color: AppTheme.borderColor),
+              Divider(height: 20, color: AppTheme.borderColor),
 
               // Test Connection Bar
               Row(
@@ -373,7 +377,7 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
                     ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppTheme.accentCyan,
-                      side: const BorderSide(color: AppTheme.accentCyan),
+                      side: BorderSide(color: AppTheme.accentCyan),
                     ),
                   ),
                 ],
@@ -431,16 +435,16 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
                       if (_testResult!.success) ...[
                         Text(
                           'Engine: ${_testResult!.tsharkVersion ?? "TShark Ready"}',
-                          style: const TextStyle(fontSize: 11.5, color: Colors.white70),
+                          style: TextStyle(fontSize: 11.5, color: AppTheme.textPrimary),
                         ),
                         Text(
                           'Discovered Network Adapters: ${_testResult!.interfaces.length} (${_testResult!.interfaces.take(4).map((i) => i.displayName).join(", ")}${_testResult!.interfaces.length > 4 ? "..." : ""})',
-                          style: const TextStyle(fontSize: 11.5, color: Colors.white70),
+                          style: TextStyle(fontSize: 11.5, color: AppTheme.textPrimary),
                         ),
                       ] else ...[
                         Text(
                           _testResult!.errorMessage ?? 'Unknown SSH error',
-                          style: const TextStyle(fontSize: 11.5, color: Colors.white70),
+                          style: TextStyle(fontSize: 11.5, color: AppTheme.textPrimary),
                         ),
                       ],
                     ],
@@ -454,7 +458,7 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel', style: TextStyle(color: Colors.white60)),
+          child: Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
         ),
         ElevatedButton.icon(
           onPressed: _save,
@@ -462,7 +466,7 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
           label: Text(isEdit ? 'Save Changes' : 'Add Machine'),
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.accentCyan,
-            foregroundColor: Colors.black,
+            foregroundColor: AppTheme.isDark ? Colors.black : Colors.white,
           ),
         ),
       ],

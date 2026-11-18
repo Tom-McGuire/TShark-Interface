@@ -2,7 +2,7 @@ name: tshark_interface
 description: "A lightweight desktop interface for headless T-Shark packet captures."
 publish_to: 'none'
 
-version: 0.6.2-Beta
+version: 0.6.3-Beta
 
 environment:
   sdk: ^3.13.5
@@ -18,7 +18,10 @@ dependencies:
   file_picker: ^13.1.0
   intl: ^0.20.3
   dartssh2: ^2.9.0
+  sqlite3: ^3.7.1
+  sqlite3_flutter_libs: ^0.6.0+eol
 
+  material_ui: any
 dev_dependencies:
   flutter_test:
     sdk: flutter

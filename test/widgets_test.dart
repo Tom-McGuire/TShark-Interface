@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tshark_interface/models/active_capture_session.dart';
 import 'package:tshark_interface/models/capture_config.dart';

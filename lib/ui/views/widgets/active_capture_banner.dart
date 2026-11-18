@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:path/path.dart' as p;
 import 'package:tshark_interface/models/active_capture_session.dart';
 import 'package:tshark_interface/services/system_service.dart';
@@ -68,7 +68,9 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF261214),
+        color: AppTheme.isDark
+            ? const Color(0xFF261214)
+            : AppTheme.error.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.accentRed.withValues(alpha: 0.5)),
       ),
@@ -108,7 +110,7 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
                       widget.session.isRemote
                           ? 'REMOTE CAPTURE RUNNING (${widget.session.remoteHostName ?? "SSH"})'
                           : 'CAPTURE RUNNING (LOCAL)',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 1.0,
@@ -119,24 +121,24 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.black38,
+                        color: AppTheme.surfaceHigh,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         'PID ${widget.session.pid}',
-                        style: const TextStyle(fontSize: 11, color: Colors.white70),
+                        style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
                       ),
                     ),
                     const SizedBox(width: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: Colors.black38,
+                        color: AppTheme.surfaceHigh,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         widget.session.mode.label,
-                        style: const TextStyle(fontSize: 11, color: AppTheme.accentCyan),
+                        style: TextStyle(fontSize: 11, color: AppTheme.accentCyan),
                       ),
                     ),
                   ],
@@ -146,22 +148,22 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
                   children: [
                     Text(
                       _formatDuration(widget.elapsed),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'Consolas',
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppTheme.textPrimary,
                       ),
                     ),
                     const SizedBox(width: 16),
-                    Icon(Icons.storage, size: 14, color: Colors.grey[400]),
+                    Icon(Icons.storage, size: 14, color: AppTheme.textSecondary),
                     const SizedBox(width: 4),
                     Text(
                       _formatBytes(widget.fileSizeBytes),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'Consolas',
                         fontSize: 13,
-                        color: Colors.white70,
+                        color: AppTheme.textPrimary,
                       ),
                     ),
                     const SizedBox(width: 16),
@@ -169,9 +171,9 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
                       child: Text(
                         p.basename(widget.session.targetFilePath),
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Colors.white60,
+                          color: AppTheme.textSecondary,
                         ),
                       ),
                     ),
@@ -191,8 +193,8 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
                   icon: const Icon(Icons.folder_open, size: 16),
                   label: const Text('Open Folder'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Colors.white24),
+                    foregroundColor: AppTheme.textPrimary,
+                    side: BorderSide(color: AppTheme.border),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -202,8 +204,8 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
                   icon: const Icon(Icons.cleaning_services_outlined, size: 15),
                   label: const Text('Forget Local Record'),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white70,
-                    side: const BorderSide(color: Colors.white24),
+                    foregroundColor: AppTheme.textPrimary,
+                    side: BorderSide(color: AppTheme.border),
                   ),
                 ),
                 const SizedBox(width: 10),

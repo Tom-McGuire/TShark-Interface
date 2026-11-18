@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
@@ -82,10 +82,10 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
       context: context,
       builder: (dialogCtx) {
         return Dialog(
-          backgroundColor: const Color(0xFF13171F),
+          backgroundColor: AppTheme.surface,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: Color(0xFF2C2C2C)),
+            side: BorderSide(color: AppTheme.border),
           ),
           child: ConstrainedBox(
             constraints: const BoxConstraints(
@@ -96,26 +96,26 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF161B24),
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-                    border: Border(bottom: BorderSide(color: Color(0xFF2C2C2C))),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surface,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                    border: Border(bottom: BorderSide(color: AppTheme.border)),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.dns_outlined, color: AppTheme.accentCyan, size: 20),
+                      Icon(Icons.dns_outlined, color: AppTheme.accentCyan, size: 20),
                       const SizedBox(width: 10),
-                      const Text(
+                      Text(
                         'Remote SSH Hosts Management',
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                          color: AppTheme.textPrimary,
                         ),
                       ),
                       const Spacer(),
                       IconButton(
-                        icon: const Icon(Icons.close, size: 18),
+                        icon: Icon(Icons.close, size: 18, color: AppTheme.textSecondary),
                         onPressed: () => Navigator.of(dialogCtx).pop(),
                       ),
                     ],
@@ -232,7 +232,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
       steps: _buildTourSteps(vm),
       onFinish: () => endDemoWalkthrough(vm),
       child: Scaffold(
-        backgroundColor: const Color(0xFF0F141C),
+        backgroundColor: AppTheme.scaffoldBg,
         body: SafeArea(
           child: Column(
             children: [
@@ -253,9 +253,9 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
   Widget _buildTopControlBar(BuildContext context, TSharkCaptureViewModel vm) {
     return Container(
       height: 52,
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        border: Border(bottom: BorderSide(color: Color(0xFF2C2C2C), width: 1)),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        border: Border(bottom: BorderSide(color: AppTheme.border, width: 1)),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -285,7 +285,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                           ),
                         ),
                         const SizedBox(width: 10),
-                        const Column(
+                        Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -295,12 +295,12 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                                 fontSize: 13,
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 0.8,
-                                color: Colors.white,
+                                color: AppTheme.textPrimary,
                               ),
                             ),
                             Text(
                               'Headless Packet Capture Studio',
-                              style: TextStyle(fontSize: 10, color: Colors.white54),
+                              style: TextStyle(fontSize: 10, color: AppTheme.textSecondary),
                             ),
                           ],
                         ),
@@ -316,27 +316,30 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                               height: 32,
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF161B24),
+                                color: AppTheme.surfaceHigh,
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFF2C2C2C)),
+                                border: Border.all(color: AppTheme.border),
                               ),
                               child: DropdownButtonHideUnderline(
                                 child: DropdownButton<String?>(
                                   key: ValueKey('top_target_${vm.selectedRemoteHost?.id ?? "local"}'),
                                   value: vm.selectedRemoteHost?.id,
                                   isDense: true,
-                                  dropdownColor: const Color(0xFF161B24),
-                                  style: const TextStyle(fontSize: 11, color: Colors.white),
-                                  icon: const Icon(Icons.arrow_drop_down, size: 16, color: Colors.white70),
+                                  dropdownColor: AppTheme.surfaceElevated,
+                                  style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
+                                  icon: Icon(Icons.arrow_drop_down, size: 16, color: AppTheme.textSecondary),
                                   items: [
                                     DropdownMenuItem<String?>(
                                       value: null,
                                       child: Row(
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          const Icon(Icons.computer, size: 14, color: Colors.white70),
+                                          Icon(Icons.computer, size: 14, color: AppTheme.textPrimary),
                                           const SizedBox(width: 6),
-                                          const Text('Localhost (This PC)', style: TextStyle(fontSize: 11)),
+                                          Text(
+                                            'Localhost (This PC)',
+                                            style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
+                                          ),
                                           if (vm.localActiveSession != null) ...[
                                             const SizedBox(width: 6),
                                             _buildStatusDot(
@@ -354,11 +357,11 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            const Icon(Icons.dns_outlined, size: 14, color: AppTheme.accentCyan),
+                                            Icon(Icons.dns_outlined, size: 14, color: AppTheme.accentCyan),
                                             const SizedBox(width: 6),
                                             Text(
                                               'SSH: ${host.name}',
-                                              style: const TextStyle(fontSize: 11),
+                                              style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                             if (rSession != null) ...[
@@ -397,9 +400,9 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                               constraints: const BoxConstraints(minWidth: 140, maxWidth: 210),
                               padding: const EdgeInsets.symmetric(horizontal: 8),
                               decoration: BoxDecoration(
-                                color: const Color(0xFF161B24),
+                                color: AppTheme.surfaceHigh,
                                 borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: const Color(0xFF2C2C2C)),
+                                border: Border.all(color: AppTheme.border),
                               ),
                               child: DropdownButtonHideUnderline(
                                 child: DropdownButton<CaptureInterface>(
@@ -411,20 +414,20 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                                       : null,
                                   isDense: true,
                                   isExpanded: true,
-                                  dropdownColor: const Color(0xFF161B24),
-                                  hint: const Text(
+                                  dropdownColor: AppTheme.surfaceElevated,
+                                  hint: Text(
                                     'Select Interface',
-                                    style: TextStyle(fontSize: 11, color: Colors.white54),
+                                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                                   ),
-                                  style: const TextStyle(fontSize: 11, color: Colors.white),
-                                  icon: const Icon(Icons.arrow_drop_down, size: 16, color: Colors.white70),
+                                  style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
+                                  icon: Icon(Icons.arrow_drop_down, size: 16, color: AppTheme.textSecondary),
                                   items: vm.interfaces.map((iface) {
                                     return DropdownMenuItem<CaptureInterface>(
                                       value: iface,
                                       child: Text(
                                         iface.displayName,
                                         overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(fontSize: 11),
+                                        style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
                                       ),
                                     );
                                   }).toList(),
@@ -603,15 +606,15 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: const Color(0xFF2C2C2C)),
+                              border: Border.all(color: AppTheme.border),
                             ),
-                            child: const Row(
+                            child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.download, size: 15, color: Colors.white70),
-                                SizedBox(width: 6),
-                                Text('Export', style: TextStyle(fontSize: 11, color: Colors.white70)),
-                                Icon(Icons.arrow_drop_down, size: 14, color: Colors.white70),
+                                Icon(Icons.download, size: 15, color: AppTheme.textPrimary),
+                                const SizedBox(width: 6),
+                                Text('Export', style: TextStyle(fontSize: 11, color: AppTheme.textPrimary)),
+                                Icon(Icons.arrow_drop_down, size: 14, color: AppTheme.textPrimary),
                               ],
                             ),
                           ),
@@ -771,7 +774,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
       ),
       child: Row(
         children: [
-          const Icon(
+          Icon(
             Icons.warning_amber_rounded,
             color: AppTheme.accentAmber,
             size: 22,
@@ -783,7 +786,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
               children: [
                 Text(
                   'Stored Remote Session Unreachable: ${session.remoteHostName ?? "Remote Host"} (PID ${session.pid})',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.bold,
                     color: AppTheme.accentAmber,
@@ -793,7 +796,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                 Text(
                   session.unreachableReason ??
                       'Host did not respond over SSH. If the machine was turned off, you can clear this session from local memory.',
-                  style: const TextStyle(fontSize: 11.5, color: Colors.white70),
+                  style: TextStyle(fontSize: 11.5, color: AppTheme.textPrimary),
                 ),
               ],
             ),
@@ -815,7 +818,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
               style: OutlinedButton.styleFrom(
                 visualDensity: VisualDensity.compact,
                 foregroundColor: AppTheme.accentAmber,
-                side: const BorderSide(color: AppTheme.accentAmber),
+                side: BorderSide(color: AppTheme.accentAmber),
               ),
             ),
             const SizedBox(width: 8),
@@ -892,12 +895,12 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
               const SizedBox(height: 16),
 
               // Mode Tabs
-              const Text(
+              Text(
                 'Capture Mode',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: Colors.white70,
+                  color: AppTheme.textPrimary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -932,12 +935,24 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                       },
                 style: ButtonStyle(
                   visualDensity: VisualDensity.compact,
+                  foregroundColor: WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.disabled)) {
+                      return AppTheme.textMuted;
+                    }
+                    if (states.contains(WidgetState.selected)) {
+                      return AppTheme.textPrimary;
+                    }
+                    return AppTheme.textSecondary;
+                  }),
                   backgroundColor: WidgetStateProperty.resolveWith((states) {
                     if (states.contains(WidgetState.selected)) {
                       return AppTheme.accentCyan.withValues(alpha: 0.2);
                     }
-                    return const Color(0xFF161B24);
+                    return AppTheme.surface;
                   }),
+                  side: WidgetStateProperty.all(
+                    BorderSide(color: AppTheme.border),
+                  ),
                 ),
               ),
               const SizedBox(height: 14),
@@ -959,7 +974,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
               // Snaplen / Payload Slicing
               Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -968,20 +983,23 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
                           ),
                         ),
-                        SizedBox(height: 2),
+                        const SizedBox(height: 2),
                         Text(
                           'Truncates payload to reduce PCAP file size.',
-                          style: TextStyle(fontSize: 11, color: Colors.white54),
+                          style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                         ),
                       ],
                     ),
                   ),
                   DropdownButton<int>(
                     value: vm.snaplen,
-                    dropdownColor: const Color(0xFF1F242C),
-                    style: const TextStyle(fontSize: 12, color: Colors.white),
+                    dropdownColor: AppTheme.surfaceElevated,
+                    iconEnabledColor: AppTheme.textSecondary,
+                    iconDisabledColor: AppTheme.textMuted,
+                    style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
                     items: const [
                       DropdownMenuItem(
                         value: 0,
@@ -1010,19 +1028,19 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                   ),
                 ],
               ),
-              const Divider(height: 24, color: AppTheme.borderColor),
+              Divider(height: 24, color: AppTheme.borderColor),
 
               // Promiscuous Mode
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 dense: true,
-                title: const Text(
+                title: Text(
                   'Promiscuous Mode',
-                  style: TextStyle(fontSize: 12.5),
+                  style: TextStyle(fontSize: 12.5, color: AppTheme.textPrimary),
                 ),
-                subtitle: const Text(
+                subtitle: Text(
                   'Captures all network packets seen on the segment, not just packets addressed to this host.',
-                  style: TextStyle(fontSize: 11, color: Colors.white54),
+                  style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                 ),
                 value: vm.promiscuous,
                 onChanged: vm.isCapturing
@@ -1030,16 +1048,17 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                     : (val) => vm.setPromiscuous(val),
                 activeThumbColor: AppTheme.accentCyan,
               ),
-              const Divider(height: 24, color: AppTheme.borderColor),
+              Divider(height: 24, color: AppTheme.borderColor),
 
               // Output Storage Directory (Local Folder Picker vs Remote Path Input)
               Text(
                 vm.isRemoteTarget
                     ? 'Remote Destination Folder (on ${vm.selectedRemoteHost!.name})'
                     : 'Destination Storage Folder',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
                 ),
               ),
               const SizedBox(height: 6),
@@ -1064,7 +1083,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF13171F),
+                          color: AppTheme.surfaceHigh,
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: AppTheme.borderColor),
                         ),
@@ -1072,9 +1091,9 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                           vm.outputDirectory.isNotEmpty
                               ? vm.outputDirectory
                               : 'No directory chosen',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white70,
+                            color: AppTheme.textPrimary,
                           ),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -1089,7 +1108,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                       label: const Text('Change'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppTheme.accentCyan,
-                        side: const BorderSide(color: AppTheme.borderColor),
+                        side: BorderSide(color: AppTheme.borderColor),
                       ),
                     ),
                   ],
@@ -1116,9 +1135,9 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                       contentPadding: EdgeInsets.zero,
                       dense: true,
                       controlAffinity: ListTileControlAffinity.leading,
-                      title: const Text(
+                      title: Text(
                         'Timestamp Subfolder',
-                        style: TextStyle(fontSize: 12),
+                        style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
                       ),
                       value: vm.createSubfolder,
                       onChanged: vm.isCapturing
@@ -1129,22 +1148,30 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                   ),
                 ],
               ),
-              const Divider(height: 24, color: AppTheme.borderColor),
+              Divider(height: 24, color: AppTheme.borderColor),
 
               // Reboot & Crash Recovery Policy
-              const Text(
+              Text(
                 'Reboot & Crash Recovery Policy',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
               ),
               const SizedBox(height: 2),
-              const Text(
+              Text(
                 'Action to take if the system restarts or shuts down while capturing.',
-                style: TextStyle(fontSize: 11, color: Colors.white54),
+                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
               ),
               const SizedBox(height: 8),
               DropdownButtonFormField<RecoveryPolicy>(
                 initialValue: vm.recoveryPolicy,
                 isExpanded: true,
+                dropdownColor: AppTheme.surfaceElevated,
+                iconEnabledColor: AppTheme.textSecondary,
+                iconDisabledColor: AppTheme.textMuted,
+                style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
                 decoration: const InputDecoration(
                   prefixIcon: Icon(Icons.settings_backup_restore, size: 18),
                 ),
@@ -1154,7 +1181,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                     child: Text(
                       '${policy.label} — ${policy.description}',
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12),
+                      style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
                     ),
                   );
                 }).toList(),
@@ -1207,18 +1234,18 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF13171F),
+            color: AppTheme.surfaceHigh,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: AppTheme.borderColor),
           ),
-          child: const Row(
+          child: Row(
             children: [
               Icon(Icons.info_outline, size: 16, color: AppTheme.accentCyan),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
                   'Continuous manual capture. Will record to PCAPNG until you click "Stop Capture".',
-                  style: TextStyle(fontSize: 11.5, color: Colors.white70),
+                  style: TextStyle(fontSize: 11.5, color: AppTheme.textPrimary),
                 ),
               ),
             ],
@@ -1229,16 +1256,20 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF13171F),
+            color: AppTheme.surfaceHigh,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: AppTheme.borderColor),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Auto-stop Duration',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
               ),
               const SizedBox(height: 8),
               Row(
@@ -1246,16 +1277,18 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                   Expanded(
                     child: Row(
                       children: [
-                        const Text(
+                        Text(
                           'Hours: ',
-                          style: TextStyle(fontSize: 12, color: Colors.white70),
+                          style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
                         ),
                         DropdownButton<int>(
                           value: vm.durationHours,
-                          dropdownColor: const Color(0xFF1F242C),
-                          style: const TextStyle(
+                          dropdownColor: AppTheme.surfaceElevated,
+                          iconEnabledColor: AppTheme.textSecondary,
+                          iconDisabledColor: AppTheme.textMuted,
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white,
+                            color: AppTheme.textPrimary,
                           ),
                           items: List.generate(
                             25,
@@ -1271,16 +1304,18 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                   Expanded(
                     child: Row(
                       children: [
-                        const Text(
+                        Text(
                           'Minutes: ',
-                          style: TextStyle(fontSize: 12, color: Colors.white70),
+                          style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
                         ),
                         DropdownButton<int>(
                           value: vm.durationMinutes,
-                          dropdownColor: const Color(0xFF1F242C),
-                          style: const TextStyle(
+                          dropdownColor: AppTheme.surfaceElevated,
+                          iconEnabledColor: AppTheme.textSecondary,
+                          iconDisabledColor: AppTheme.textMuted,
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white,
+                            color: AppTheme.textPrimary,
                           ),
                           items: [1, 2, 5, 10, 15, 20, 30, 45, 60]
                               .map(
@@ -1307,7 +1342,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF13171F),
+            color: AppTheme.surfaceHigh,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: AppTheme.borderColor),
           ),
@@ -1321,18 +1356,19 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                       vm.ringRotateBySize
                           ? 'Rotate Every (MB)'
                           : 'Rotate Every (Minutes)',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
                       ),
                     ),
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
+                      Text(
                         'By Size',
-                        style: TextStyle(fontSize: 11, color: Colors.white70),
+                        style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
                       ),
                       Switch(
                         value: vm.ringRotateBySize,
@@ -1353,10 +1389,12 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                         ? DropdownButton<int>(
                             value: vm.ringRotateFilesizeMb,
                             isExpanded: true,
-                            dropdownColor: const Color(0xFF1F242C),
-                            style: const TextStyle(
+                            dropdownColor: AppTheme.surfaceElevated,
+                            iconEnabledColor: AppTheme.textSecondary,
+                            iconDisabledColor: AppTheme.textMuted,
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.white,
+                              color: AppTheme.textPrimary,
                             ),
                             items: [10, 25, 50, 100, 250, 500, 1000]
                                 .map(
@@ -1374,10 +1412,12 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                         : DropdownButton<int>(
                             value: vm.ringRotateMinutes,
                             isExpanded: true,
-                            dropdownColor: const Color(0xFF1F242C),
-                            style: const TextStyle(
+                            dropdownColor: AppTheme.surfaceElevated,
+                            iconEnabledColor: AppTheme.textSecondary,
+                            iconDisabledColor: AppTheme.textMuted,
+                            style: TextStyle(
                               fontSize: 12,
-                              color: Colors.white,
+                              color: AppTheme.textPrimary,
                             ),
                             items: [1, 5, 10, 15, 30, 60]
                                 .map(
@@ -1396,16 +1436,18 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                   Expanded(
                     child: Row(
                       children: [
-                        const Text(
+                        Text(
                           'Keep: ',
-                          style: TextStyle(fontSize: 12, color: Colors.white70),
+                          style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
                         ),
                         DropdownButton<int>(
                           value: vm.ringFilesCount,
-                          dropdownColor: const Color(0xFF1F242C),
-                          style: const TextStyle(
+                          dropdownColor: AppTheme.surfaceElevated,
+                          iconEnabledColor: AppTheme.textSecondary,
+                          iconDisabledColor: AppTheme.textMuted,
+                          style: TextStyle(
                             fontSize: 12,
-                            color: Colors.white,
+                            color: AppTheme.textPrimary,
                           ),
                           items: [2, 3, 5, 10, 20, 50]
                               .map(
@@ -1432,16 +1474,20 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
         return Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: const Color(0xFF13171F),
+            color: AppTheme.surfaceHigh,
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: AppTheme.borderColor),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Stop after Packet Count',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
               ),
               const SizedBox(height: 6),
               Row(
@@ -1542,7 +1588,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
               ),
               child: Text(
                 '${vm.demoPackets.length} Packets',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.bold,
                   color: AppTheme.accentEmerald,
@@ -1554,21 +1600,21 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
           ? Container(
               padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
               decoration: BoxDecoration(
-                color: const Color(0xFF13171F),
+                color: AppTheme.surfaceHigh,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: AppTheme.borderColor),
               ),
-              child: const Center(
+              child: Center(
                 child: Text(
                   'No live packets in stream. Start a capture or click "Load Demo" to preview decoded frames.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11.5, color: Colors.white38),
+                  style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
                 ),
               ),
             )
           : Container(
               decoration: BoxDecoration(
-                color: const Color(0xFF13171F),
+                color: AppTheme.surfaceHigh,
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: AppTheme.borderColor),
               ),
@@ -1577,7 +1623,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: vm.demoPackets.length,
                 separatorBuilder: (_, _) =>
-                    const Divider(height: 1, color: AppTheme.borderColor),
+                    Divider(height: 1, color: AppTheme.borderColor),
                 itemBuilder: (context, index) {
                   final pkt = vm.demoPackets[index];
                   final isSelected = vm.selectedDemoPacket?.number == pkt.number;
@@ -1597,10 +1643,10 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                             width: 24,
                             child: Text(
                               '#${pkt.number}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontFamily: 'Consolas',
                                 fontSize: 11,
-                                color: Colors.white54,
+                                color: AppTheme.textSecondary,
                               ),
                             ),
                           ),
@@ -1616,7 +1662,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                             ),
                             child: Text(
                               pkt.protocol,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontFamily: 'Consolas',
                                 fontSize: 10,
                                 fontWeight: FontWeight.bold,
@@ -1631,20 +1677,20 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                               children: [
                                 Text(
                                   '${pkt.source} → ${pkt.destination} (${pkt.length} B)',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontFamily: 'Consolas',
                                     fontSize: 11.5,
                                     fontWeight: FontWeight.w600,
-                                    color: Colors.white,
+                                    color: AppTheme.textPrimary,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
                                   pkt.info,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 11,
-                                    color: Colors.white60,
+                                    color: AppTheme.textSecondary,
                                   ),
                                   overflow: TextOverflow.ellipsis,
                                 ),
@@ -1668,7 +1714,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: const Color(0xFF13171F),
+          color: AppTheme.surfaceHigh,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: AppTheme.borderColor),
         ),
@@ -1680,7 +1726,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.chevron_right,
                     size: 14,
                     color: AppTheme.accentCyan,
@@ -1689,10 +1735,10 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                   Expanded(
                     child: Text(
                       layer,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontFamily: 'Consolas',
                         fontSize: 11,
-                        color: Colors.white70,
+                        color: AppTheme.textPrimary,
                       ),
                     ),
                   ),
@@ -1714,7 +1760,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B24),
+        color: AppTheme.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.borderColor),
       ),
@@ -1729,10 +1775,10 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                 child: Text(
                   title,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Colors.white,
+                    color: AppTheme.textPrimary,
                   ),
                 ),
               ),
