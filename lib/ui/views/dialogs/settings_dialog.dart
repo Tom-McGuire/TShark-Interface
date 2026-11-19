@@ -104,7 +104,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   Expanded(
                     child: TextField(
                       controller: _tsharkPathController,
-                      style: const TextStyle(fontSize: 12, fontFamily: 'Consolas'),
+                      style: AppTheme.monoTextStyle(fontSize: 12),
                       decoration: InputDecoration(
                         hintText: r'C:\Program Files\Wireshark\tshark.exe',
                         hintStyle: TextStyle(fontSize: 11, color: AppTheme.textMuted),

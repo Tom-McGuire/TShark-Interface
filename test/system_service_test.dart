@@ -36,14 +36,27 @@ void main() {
     });
 
     group('openFolder', () {
-      test('creates directory if not existing and handles call gracefully', () async {
+      test('returns false and does not create missing directory by default', () async {
+        final tempDir = Directory.systemTemp.createTempSync('sys_service_test_');
+        final targetSubdir = Directory('${tempDir.path}/missing_subfolder');
+        addTearDown(() => tempDir.deleteSync(recursive: true));
+
+        expect(targetSubdir.existsSync(), isFalse);
+        final res = await SystemService.openFolder(targetSubdir.path);
+        expect(res, isFalse);
+        expect(targetSubdir.existsSync(), isFalse);
+      });
+
+      test('creates missing directory when createIfMissing is true', () async {
         final tempDir = Directory.systemTemp.createTempSync('sys_service_test_');
         final targetSubdir = Directory('${tempDir.path}/subfolder_test');
         addTearDown(() => tempDir.deleteSync(recursive: true));
 
         expect(targetSubdir.existsSync(), isFalse);
-        // openFolder creates the dir if missing before attempting native process launch
-        final res = await SystemService.openFolder(targetSubdir.path);
+        final res = await SystemService.openFolder(
+          targetSubdir.path,
+          createIfMissing: true,
+        );
         // In headless test environments, process launch might fail or succeed, but dir is created
         expect(targetSubdir.existsSync(), isTrue);
         expect(res, isA<bool>());

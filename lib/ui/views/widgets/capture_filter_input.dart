@@ -6,10 +6,12 @@ class CaptureFilterInput extends StatefulWidget {
     super.key,
     required this.filter,
     required this.onChanged,
+    this.enabled = true,
   });
 
   final String filter;
   final ValueChanged<String> onChanged;
+  final bool enabled;
 
   @override
   State<CaptureFilterInput> createState() => _CaptureFilterInputState();
@@ -94,10 +96,12 @@ class _CaptureFilterInputState extends State<CaptureFilterInput> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: InkWell(
-        onTap: () {
-          widget.onChanged(syntax);
-          Navigator.of(context).pop();
-        },
+        onTap: widget.enabled
+            ? () {
+                widget.onChanged(syntax);
+                Navigator.of(context).pop();
+              }
+            : null,
         borderRadius: BorderRadius.circular(6),
         child: Container(
           padding: const EdgeInsets.all(8),
@@ -114,8 +118,7 @@ class _CaptureFilterInputState extends State<CaptureFilterInput> {
                   children: [
                     Text(
                       syntax,
-                      style: TextStyle(
-                        fontFamily: 'Consolas',
+                      style: AppTheme.monoTextStyle(
                         fontWeight: FontWeight.bold,
                         color: AppTheme.accentCyan,
                         fontSize: 12.5,
@@ -129,7 +132,8 @@ class _CaptureFilterInputState extends State<CaptureFilterInput> {
                   ],
                 ),
               ),
-              Icon(Icons.touch_app, size: 16, color: AppTheme.textMuted),
+              if (widget.enabled)
+                Icon(Icons.touch_app, size: 16, color: AppTheme.textMuted),
             ],
           ),
         ),
@@ -160,7 +164,7 @@ class _CaptureFilterInputState extends State<CaptureFilterInput> {
               child: Icon(Icons.help_outline, size: 15, color: AppTheme.textSecondary),
             ),
             const Spacer(),
-            if (widget.filter.isNotEmpty)
+            if (widget.filter.isNotEmpty && widget.enabled)
               TextButton(
                 onPressed: () => widget.onChanged(''),
                 style: TextButton.styleFrom(
@@ -177,8 +181,9 @@ class _CaptureFilterInputState extends State<CaptureFilterInput> {
         const SizedBox(height: 8),
         TextField(
           controller: _controller,
+          enabled: widget.enabled,
           onChanged: widget.onChanged,
-          style: const TextStyle(fontFamily: 'Consolas', fontSize: 13),
+          style: AppTheme.monoTextStyle(fontSize: 13),
           decoration: InputDecoration(
             hintText: 'e.g. not port 22 and not port 3389 or host 192.168.1.1',
             hintStyle: TextStyle(color: AppTheme.textMuted, fontSize: 12),

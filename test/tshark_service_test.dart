@@ -125,6 +125,43 @@ void main() {
       expect(cmd, contains(r'-w "C:\Captures Folder\test.pcapng"'));
     });
 
+    test('buildDisplayCommandLine always quotes -f filter and -w path including shell operators without spaces', () {
+      const linuxIface = CaptureInterface(index: '1', name: 'eth0');
+      const config = CaptureConfig(
+        interface: linuxIface,
+        outputDirectory: '/tmp',
+        mode: CaptureMode.manual,
+        captureFilter: 'tcp[tcpflags]&(tcp-syn|tcp-fin)!=0',
+      );
+
+      final cmd = service.buildDisplayCommandLine(
+        tsharkPath: '/usr/bin/tshark',
+        config: config,
+        fullOutputPath: '/tmp/out.pcapng',
+      );
+
+      expect(cmd, contains('-f "tcp[tcpflags]&(tcp-syn|tcp-fin)!=0"'));
+      expect(cmd, contains('-w "/tmp/out.pcapng"'));
+      expect(cmd, startsWith('/usr/bin/tshark -i eth0'));
+    });
+
+    test('buildDisplayCommandLine defaults forPowerShell to false and does not prepend &', () {
+      const config = CaptureConfig(
+        interface: iface,
+        outputDirectory: r'C:\Captures',
+        mode: CaptureMode.manual,
+      );
+
+      final cmd = service.buildDisplayCommandLine(
+        tsharkPath: r'C:\Program Files\Wireshark\tshark.exe',
+        config: config,
+        fullOutputPath: r'C:\Captures\test.pcapng',
+      );
+
+      expect(cmd.startsWith('& '), isFalse);
+      expect(cmd, startsWith(r'"C:\Program Files\Wireshark\tshark.exe"'));
+    });
+
     test('Sanitizes file prefix safely', () {
       expect(TSharkService.sanitizeFilePrefix('test_123'), equals('test_123'));
       expect(TSharkService.sanitizeFilePrefix('../../bad_prefix'), equals('bad_prefix'));

@@ -351,20 +351,26 @@ class TSharkService {
   }
 
   /// Generates a readable CLI command string for displaying and copying.
-  /// Formats Windows paths with `& ` for ready execution in PowerShell.
+  /// When [forPowerShell] is true on Windows, prepends `& ` for quoted paths.
   String buildDisplayCommandLine({
     required String tsharkPath,
     required CaptureConfig config,
     required String fullOutputPath,
-    bool forPowerShell = true,
+    bool forPowerShell = false,
   }) {
     final args = buildArguments(config, fullOutputPath);
-    final quotedArgs = args.map((arg) {
-      if (arg.contains(' ') || arg.contains('\\') || arg.contains('"')) {
-        return '"${arg.replaceAll('"', '\\"')}"';
+    final shellMetaRegex = RegExp(r'[\s\\"&|;()<>`$]');
+    final quotedArgs = <String>[];
+    for (var i = 0; i < args.length; i++) {
+      final arg = args[i];
+      final isFilterOrOutput =
+          i > 0 && (args[i - 1] == '-f' || args[i - 1] == '-w');
+      if (isFilterOrOutput || shellMetaRegex.hasMatch(arg)) {
+        quotedArgs.add('"${arg.replaceAll('"', r'\"')}"');
+      } else {
+        quotedArgs.add(arg);
       }
-      return arg;
-    }).toList();
+    }
 
     final exeNeedsQuotes = tsharkPath.contains(' ');
     final exe = exeNeedsQuotes ? '"$tsharkPath"' : tsharkPath;
@@ -500,6 +506,16 @@ class TSharkService {
     }
   }
 
+  Future<bool> _waitForExit(int pid, int attempts) async {
+    for (var i = 0; i < attempts; i++) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!await isProcessAlive(pid)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /// Terminates a running capture cleanly, attempting graceful shutdown first, then force-kill.
   Future<bool> stopCapture(int pid) async {
     try {
@@ -508,26 +524,27 @@ class TSharkService {
         await Process.run('taskkill', ['/PID', pid.toString(), '/T']);
 
         // 2. Wait up to 1.5 seconds for buffers to flush
-        for (var i = 0; i < 3; i++) {
-          await Future.delayed(const Duration(milliseconds: 500));
-          if (!await isProcessAlive(pid)) {
-            return true;
-          }
+        if (await _waitForExit(pid, 3)) {
+          return true;
         }
 
         // 3. Fallback to force-kill if still active
         final forceRes = await Process.run('taskkill', ['/PID', pid.toString(), '/T', '/F']);
         return forceRes.exitCode == 0;
       } else {
-        // 1. Send SIGTERM
-        await Process.run('kill', ['-15', pid.toString()]);
-        for (var i = 0; i < 3; i++) {
-          await Future.delayed(const Duration(milliseconds: 500));
-          if (!await isProcessAlive(pid)) {
-            return true;
-          }
+        // 1. Send SIGINT first so dumpcap flushes its packet buffer and closes PCAPNG cleanly
+        await Process.run('kill', ['-2', pid.toString()]);
+        if (await _waitForExit(pid, 3)) {
+          return true;
         }
-        // 2. Send SIGKILL
+
+        // 2. Fallback to SIGTERM
+        await Process.run('kill', ['-15', pid.toString()]);
+        if (await _waitForExit(pid, 2)) {
+          return true;
+        }
+
+        // 3. Fallback to SIGKILL
         final killRes = await Process.run('kill', ['-9', pid.toString()]);
         return killRes.exitCode == 0;
       }

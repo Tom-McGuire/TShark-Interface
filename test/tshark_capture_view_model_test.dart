@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tshark_interface/models/active_capture_session.dart';
@@ -28,6 +29,10 @@ class FakeTSharkService extends TSharkService {
   bool shouldFailStart;
   int startCallCount = 0;
   int stopCallCount = 0;
+  String? latestPcapFile;
+  final List<String> getCaptureSizePaths = [];
+  void Function(int exitCode)? lastOnProcessExit;
+  int? exitCodeToEmitOnStop;
 
   @override
   Future<String?> findTSharkPath() async => fakePath;
@@ -42,10 +47,13 @@ class FakeTSharkService extends TSharkService {
   Future<bool> isProcessAlive(int pid) async => false;
 
   @override
-  Future<int> getCaptureSizeBytes(String filePath) async => 4096;
+  Future<int> getCaptureSizeBytes(String filePath) async {
+    getCaptureSizePaths.add(filePath);
+    return 4096;
+  }
 
   @override
-  Future<String?> findLatestPcapFile(String directoryPath) async => null;
+  Future<String?> findLatestPcapFile(String directoryPath) async => latestPcapFile;
 
   @override
   Future<CaptureProcessResult> startCapture({
@@ -55,6 +63,7 @@ class FakeTSharkService extends TSharkService {
     void Function(int exitCode)? onProcessExit,
   }) async {
     startCallCount++;
+    lastOnProcessExit = onProcessExit;
     if (shouldFailStart) {
       throw Exception('Mock process start failure');
     }
@@ -69,6 +78,9 @@ class FakeTSharkService extends TSharkService {
   @override
   Future<bool> stopCapture(int pid) async {
     stopCallCount++;
+    if (exitCodeToEmitOnStop != null) {
+      lastOnProcessExit?.call(exitCodeToEmitOnStop!);
+    }
     return true;
   }
 }
@@ -79,6 +91,21 @@ class FakeRemoteSshService extends RemoteSshService {
   List<CaptureInterface> remoteInterfaces = const [
     CaptureInterface(index: '1', name: 'eth0', friendlyName: 'Remote Eth0'),
   ];
+  RemoteSessionCheckResult nextCheckResult = const RemoteSessionCheckResult(
+    isReachable: true,
+    isAlive: true,
+    sizeBytes: 1024,
+  );
+  RemoteConnectionTestResult nextTestResult = const RemoteConnectionTestResult(
+    success: true,
+    detectedOs: RemoteOsType.linux,
+    tsharkVersion: 'TShark (Wireshark) 4.2.0',
+  );
+
+  @override
+  Future<RemoteConnectionTestResult> testConnection(RemoteHost host) async {
+    return nextTestResult;
+  }
 
   @override
   Future<List<CaptureInterface>> getRemoteInterfaces(RemoteHost host) async {
@@ -106,11 +133,7 @@ class FakeRemoteSshService extends RemoteSshService {
     RemoteHost host,
     ActiveCaptureSession session,
   ) async {
-    return const RemoteSessionCheckResult(
-      isReachable: true,
-      isAlive: true,
-      sizeBytes: 1024,
-    );
+    return nextCheckResult;
   }
 }
 
@@ -133,6 +156,7 @@ void main() {
 
     tearDown(() async {
       await pumpEventQueue();
+      await Future<void>.delayed(const Duration(milliseconds: 30));
       try {
         tempDir.deleteSync(recursive: true);
       } catch (_) {}
@@ -448,13 +472,153 @@ void main() {
       vm.selectDemoPacket(vm.demoPackets.last);
       expect(vm.selectedDemoPacket, equals(vm.demoPackets.last));
 
-      // Clearing capture resets demo mode, packets, and filter
+      // Clearing capture resets demo mode, packets, filter, and filePrefix
+      vm.setFilePrefix('custom_prefix');
+      expect(vm.filePrefix, equals('custom_prefix'));
       vm.clearCapture();
       expect(vm.isDemoMode, isFalse);
       expect(vm.demoPackets, isEmpty);
       expect(vm.selectedDemoPacket, isNull);
       expect(vm.captureFilter, isEmpty);
       expect(vm.activePresetId, equals('all_traffic'));
+      expect(vm.filePrefix, equals('capture'));
+    });
+
+    test('saveRemoteHost keeps session password in memory without writing it to disk when savePassword is false', () async {
+      final vm = await createViewModel();
+      addTearDown(() => vm.dispose());
+
+      const host = RemoteHost(
+        id: 'host_sec',
+        name: 'Secure Box',
+        host: '10.20.30.40',
+        username: 'admin',
+        password: 'in_memory_only_secret',
+        privateKeyPath: '~/.ssh/id_ed25519',
+        savePassword: false,
+      );
+
+      await vm.saveRemoteHost(host);
+      expect(vm.remoteHosts.length, equals(1));
+      expect(vm.remoteHosts.first.password, equals('in_memory_only_secret'));
+      expect(vm.remoteHosts.first.privateKeyPath, equals('~/.ssh/id_ed25519'));
+
+      final hostsFile = File('${tempDir.path}/remote_hosts.json');
+      expect(hostsFile.existsSync(), isTrue);
+      final rawJson = hostsFile.readAsStringSync();
+      expect(rawJson, isNot(contains('in_memory_only_secret')));
+      final decodedList = jsonDecode(rawJson) as List<dynamic>;
+      final storedMap = decodedList.first as Map<String, dynamic>;
+      expect(storedMap['savePassword'], isFalse);
+      expect(storedMap.containsKey('password'), isFalse);
+
+      // Re-reading directly from storage omits password, while VM retains it in memory
+      final diskHosts = await storageService.loadRemoteHosts();
+      expect(diskHosts.first.password, isEmpty);
+
+      // Testing connection updates reachability/OS without losing session password
+      await vm.testRemoteHostConnection(vm.remoteHosts.first);
+      expect(vm.remoteHosts.first.isReachable, isTrue);
+      expect(vm.remoteHosts.first.password, equals('in_memory_only_secret'));
+
+      // Opting into savePassword persists it
+      await vm.saveRemoteHost(host.copyWith(savePassword: true));
+      final diskHostsSaved = await storageService.loadRemoteHosts();
+      expect(diskHostsSaved.first.password, equals('in_memory_only_secret'));
+
+      await vm.deleteRemoteHost('host_sec');
+      expect(vm.remoteHosts, isEmpty);
+    });
+
+    test('Ring-buffer stopCapture and checkExistingSession pass outputDirectory to getCaptureSizeBytes while recording latest file path', () async {
+      final vm = await createViewModel();
+      addTearDown(() => vm.dispose());
+
+      final ringDir = '${tempDir.path}/ring_capture';
+      final latestChunk = '$ringDir/capture_00003.pcapng';
+      tsharkService.latestPcapFile = latestChunk;
+
+      vm.setSelectedInterface(const CaptureInterface(index: '1', name: 'eth0'));
+      vm.setOutputDirectory(ringDir);
+      vm.setMode(CaptureMode.ringBuffer);
+
+      expect(await vm.startCapture(), isTrue);
+      await vm.stopCapture();
+
+      expect(tsharkService.getCaptureSizePaths, contains(ringDir));
+      expect(tsharkService.getCaptureSizePaths, isNot(contains(latestChunk)));
+      expect(vm.history.length, equals(1));
+      expect(vm.history.first.filePath, equals(latestChunk));
+      expect(vm.history.first.fileSizeBytes, equals(4096));
+
+      // Also verify interrupted ring-buffer checkExistingSession measures outputDirectory
+      tsharkService.getCaptureSizePaths.clear();
+      final interruptedRingSession = ActiveCaptureSession(
+        pid: 8888,
+        startedAt: DateTime.now().subtract(const Duration(minutes: 5)),
+        outputDirectory: ringDir,
+        targetFilePath: '$ringDir/capture_initial.pcapng',
+        mode: CaptureMode.ringBuffer,
+        interfaceName: 'eth0',
+        commandLine: 'tshark',
+        recoveryPolicy: RecoveryPolicy.none,
+      );
+      await storageService.saveActiveSession(interruptedRingSession);
+      await vm.checkExistingSession();
+      expect(tsharkService.getCaptureSizePaths, contains(ringDir));
+      expect(tsharkService.getCaptureSizePaths, isNot(contains(latestChunk)));
+    });
+
+    test('onProcessExit(143) during stopCapture does not set errorMessage, whereas unexpected exit does', () async {
+      final vm = await createViewModel();
+      addTearDown(() => vm.dispose());
+
+      vm.setSelectedInterface(const CaptureInterface(index: '1', name: 'eth0'));
+      vm.setOutputDirectory(tempDir.path);
+      tsharkService.exitCodeToEmitOnStop = 143;
+
+      expect(await vm.startCapture(), isTrue);
+      await vm.stopCapture();
+      expect(vm.errorMessage, isNull);
+
+      // Unexpected non-zero exit outside stopCapture sets errorMessage
+      tsharkService.exitCodeToEmitOnStop = null;
+      expect(await vm.startCapture(), isTrue);
+      tsharkService.lastOnProcessExit?.call(1);
+      expect(vm.errorMessage, contains('exited unexpectedly'));
+    });
+
+    test('stopRemoteCapture and finished refreshRemoteSessionStatus record CaptureHistoryItem with isRemote and remoteHostId', () async {
+      final vm = await createViewModel();
+      addTearDown(() => vm.dispose());
+
+      const host = RemoteHost(
+        id: 'remote_hist_1',
+        name: 'Core Probe',
+        host: '10.5.5.5',
+        username: 'ops',
+      );
+      await vm.saveRemoteHost(host);
+      await vm.selectTargetHost(host);
+
+      expect(await vm.startCapture(), isTrue);
+      await vm.stopCapture();
+
+      expect(vm.history.length, equals(1));
+      expect(vm.history.first.isRemote, isTrue);
+      expect(vm.history.first.remoteHostId, equals('remote_hist_1'));
+
+      // Also verify refreshRemoteSessionStatus when remote capture completes on its own
+      expect(await vm.startCapture(), isTrue);
+      remoteSshService.nextCheckResult = const RemoteSessionCheckResult(
+        isReachable: true,
+        isAlive: false,
+        sizeBytes: 8192,
+      );
+      await vm.refreshRemoteSessionStatus(host.id);
+      expect(vm.history.first.isRemote, isTrue);
+      expect(vm.history.first.remoteHostId, equals('remote_hist_1'));
+      expect(vm.history.first.fileSizeBytes, equals(8192));
     });
   });
 }

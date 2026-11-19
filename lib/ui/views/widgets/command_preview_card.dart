@@ -7,12 +7,14 @@ class CommandPreviewCard extends StatefulWidget {
     super.key,
     required this.commandLine,
     required this.runDetached,
-    required this.onDetachedChanged,
+    this.onDetachedChanged,
+    this.isRemoteTarget = false,
   });
 
   final String commandLine;
   final bool runDetached;
-  final ValueChanged<bool> onDetachedChanged;
+  final ValueChanged<bool>? onDetachedChanged;
+  final bool isRemoteTarget;
 
   @override
   State<CommandPreviewCard> createState() => _CommandPreviewCardState();
@@ -22,12 +24,19 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
   bool _copied = false;
   bool _usePowerShell = true;
 
+  bool get _isSshCommand =>
+      widget.isRemoteTarget || widget.commandLine.trim().startsWith('ssh ');
+
   String get _displayCommand {
     final raw = widget.commandLine.trim();
-    if (_usePowerShell && raw.startsWith('"')) {
-      return '& $raw';
+    if (_isSshCommand || raw.startsWith('#')) {
+      return raw;
     }
-    return raw;
+    final base = raw.startsWith('& ') ? raw.substring(2).trimLeft() : raw;
+    if (_usePowerShell && base.startsWith('"')) {
+      return '& $base';
+    }
+    return base;
   }
 
   void _copy() async {
@@ -81,7 +90,12 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
                   children: [
                     Text(
                       'Detached (Headless)',
-                      style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: widget.onDetachedChanged == null
+                            ? AppTheme.textMuted
+                            : AppTheme.textPrimary,
+                      ),
                     ),
                     const SizedBox(width: 4),
                     Transform.scale(
@@ -106,58 +120,93 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
             ),
             child: Row(
               children: [
-                // Shell Format Toggle
-                Container(
-                  padding: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: AppTheme.surfaceHigh,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppTheme.borderColor),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      InkWell(
-                        onTap: () => setState(() => _usePowerShell = true),
-                        borderRadius: BorderRadius.circular(4),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: _usePowerShell ? AppTheme.accentCyan.withValues(alpha: 0.2) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(4),
+                if (_isSshCommand)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceHigh,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: AppTheme.accentCyan.withValues(alpha: 0.45),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.terminal_outlined,
+                          size: 12,
+                          color: AppTheme.accentCyan,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Remote SSH',
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.accentCyan,
                           ),
-                          child: Text(
-                            'PowerShell',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: _usePowerShell ? FontWeight.bold : FontWeight.normal,
-                              color: _usePowerShell ? AppTheme.accentCyan : AppTheme.textSecondary,
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  // Shell Format Toggle
+                  Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surfaceHigh,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppTheme.borderColor),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        InkWell(
+                          onTap: () => setState(() => _usePowerShell = true),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: _usePowerShell
+                                  ? AppTheme.accentCyan.withValues(alpha: 0.2)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'PowerShell',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: _usePowerShell ? FontWeight.bold : FontWeight.normal,
+                                color: _usePowerShell ? AppTheme.accentCyan : AppTheme.textSecondary,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                      InkWell(
-                        onTap: () => setState(() => _usePowerShell = false),
-                        borderRadius: BorderRadius.circular(4),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: !_usePowerShell ? AppTheme.accentCyan.withValues(alpha: 0.2) : Colors.transparent,
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text(
-                            'CMD / Bash',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: !_usePowerShell ? FontWeight.bold : FontWeight.normal,
-                              color: !_usePowerShell ? AppTheme.accentCyan : AppTheme.textSecondary,
+                        InkWell(
+                          onTap: () => setState(() => _usePowerShell = false),
+                          borderRadius: BorderRadius.circular(4),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: !_usePowerShell
+                                  ? AppTheme.accentCyan.withValues(alpha: 0.2)
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text(
+                              'CMD / Bash',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: !_usePowerShell ? FontWeight.bold : FontWeight.normal,
+                                color: !_usePowerShell ? AppTheme.accentCyan : AppTheme.textSecondary,
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
                 const Spacer(),
                 // Copy Button
                 OutlinedButton.icon(
@@ -190,8 +239,7 @@ class _CommandPreviewCardState extends State<CommandPreviewCard> {
             padding: const EdgeInsets.all(12),
             child: SelectableText(
               _displayCommand,
-              style: TextStyle(
-                fontFamily: 'Consolas',
+              style: AppTheme.monoTextStyle(
                 fontSize: 12.5,
                 color: AppTheme.isDark ? const Color(0xFF7DD3FC) : AppTheme.accent,
                 height: 1.4,

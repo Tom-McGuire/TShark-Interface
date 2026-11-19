@@ -3,14 +3,18 @@ import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tshark_interface/models/active_capture_session.dart';
 import 'package:tshark_interface/models/capture_config.dart';
+import 'package:tshark_interface/models/capture_history_item.dart';
 import 'package:tshark_interface/models/capture_preset.dart';
 import 'package:tshark_interface/services/capture_storage_service.dart';
 import 'package:tshark_interface/ui/views/dialogs/remote_host_dialog.dart';
 import 'package:tshark_interface/ui/views/dialogs/settings_dialog.dart';
 import 'package:tshark_interface/ui/views/widgets/active_capture_banner.dart';
 import 'package:tshark_interface/ui/views/widgets/capture_filter_input.dart';
+import 'package:tshark_interface/ui/views/widgets/capture_history_card.dart';
 import 'package:tshark_interface/ui/views/widgets/capture_presets_bar.dart';
+import 'package:tshark_interface/ui/views/widgets/command_preview_card.dart';
 import 'package:tshark_interface/ui/views/widgets/interrupted_capture_banner.dart';
+import 'package:tshark_interface/ui/views/widgets/storage_and_recovery_card.dart';
 import 'package:tshark_interface/view_models/tshark_capture_view_model.dart';
 
 Widget createTestApp(Widget child) {
@@ -304,6 +308,241 @@ void main() {
       expect(cancelButton, findsOneWidget);
       await tester.tap(cancelButton);
       await tester.pump();
+    });
+  });
+
+  group('CommandPreviewCard Widget Tests', () {
+    testWidgets('toggles PowerShell & prefix vs CMD/Bash and handles remote target lock', (tester) async {
+      setDesktopView(tester);
+
+      await tester.pumpWidget(
+        createTestApp(
+          CommandPreviewCard(
+            commandLine: r'"C:\Program Files\Wireshark\tshark.exe" -i eth0',
+            runDetached: false,
+            onDetachedChanged: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('PowerShell'), findsOneWidget);
+      expect(find.text('CMD / Bash'), findsOneWidget);
+      expect(
+        find.text(r'& "C:\Program Files\Wireshark\tshark.exe" -i eth0'),
+        findsOneWidget,
+      );
+
+      // Switch to CMD / Bash -> strips leading '& '
+      await tester.tap(find.text('CMD / Bash'));
+      await tester.pump();
+      expect(
+        find.text(r'"C:\Program Files\Wireshark\tshark.exe" -i eth0'),
+        findsOneWidget,
+      );
+
+      // Even if incoming commandLine already has '& ', CMD / Bash strips it cleanly
+      await tester.pumpWidget(
+        createTestApp(
+          CommandPreviewCard(
+            commandLine: r'& "C:\Program Files\Wireshark\tshark.exe" -i eth0',
+            runDetached: false,
+            onDetachedChanged: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text('CMD / Bash'));
+      await tester.pump();
+      expect(
+        find.text(r'"C:\Program Files\Wireshark\tshark.exe" -i eth0'),
+        findsOneWidget,
+      );
+
+      // Remote target mode hides PowerShell/CMD toggle and disables Detached switch
+      await tester.pumpWidget(
+        createTestApp(
+          const CommandPreviewCard(
+            commandLine: 'ssh admin@10.0.0.5 "tshark -i eth0"',
+            runDetached: true,
+            isRemoteTarget: true,
+            onDetachedChanged: null,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Remote SSH'), findsOneWidget);
+      expect(find.text('PowerShell'), findsNothing);
+      final switchWidget = tester.widget<Switch>(find.byType(Switch));
+      expect(switchWidget.onChanged, isNull);
+    });
+  });
+
+  group('Additional Review Regression Widget Tests', () {
+    testWidgets('CaptureFilterInput disabled state disables field and hides Clear Filter', (tester) async {
+      setDesktopView(tester);
+
+      await tester.pumpWidget(
+        createTestApp(
+          CaptureFilterInput(
+            filter: 'tcp port 443',
+            enabled: false,
+            onChanged: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final tf = tester.widget<TextField>(find.byType(TextField));
+      expect(tf.enabled, isFalse);
+      expect(find.text('Clear Filter'), findsNothing);
+    });
+
+    testWidgets('CaptureHistoryCard shows empty text, remote actions, and scrolls >5 items', (tester) async {
+      setDesktopView(tester);
+
+      // 1. Empty state
+      await tester.pumpWidget(
+        createTestApp(
+          CaptureHistoryCard(
+            history: const [],
+            onOpenFolder: (_) {},
+            onOpenWireshark: (_) {},
+            onRemove: (_) {},
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(find.text('No captures recorded yet'), findsOneWidget);
+
+      // 2. Remote history item hides local Explorer/Wireshark and offers Copy Remote Path
+      CaptureHistoryItem? copiedItem;
+      final items = List<CaptureHistoryItem>.generate(8, (i) {
+        return CaptureHistoryItem(
+          filePath: i == 0
+              ? '/remote/captures/cap_0.pcapng'
+              : '/local/captures/cap_$i.pcapng',
+          fileName: 'cap_$i.pcapng',
+          timestamp: DateTime(2026, 11, 19, 10, i),
+          fileSizeBytes: 1024 * (i + 1),
+          interfaceName: i == 0 ? '[Edge] eth0' : 'eth0',
+          isRemote: i == 0,
+          remoteHostId: i == 0 ? 'h1' : null,
+        );
+      });
+
+      await tester.pumpWidget(
+        createTestApp(
+          CaptureHistoryCard(
+            history: items,
+            onOpenFolder: (_) {},
+            onOpenWireshark: (_) {},
+            onRemove: (_) {},
+            onCopyPath: (item) => copiedItem = item,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byTooltip('Copy Remote Path'), findsOneWidget);
+      await tester.tap(find.byTooltip('Copy Remote Path'));
+      await tester.pump();
+      expect(copiedItem?.fileName, equals('cap_0.pcapng'));
+
+      // Verify ListView includes all 8 items instead of truncating to 5
+      final listView = tester.widget<ListView>(find.byType(ListView));
+      expect(listView.semanticChildCount, equals(8));
+    });
+
+    testWidgets('RemoteHostDialog renders private key input and savePassword unchecked by default', (tester) async {
+      setDesktopView(tester);
+      late Directory tempDir;
+      late TSharkCaptureViewModel vm;
+      await tester.runAsync(() async {
+        tempDir = Directory.systemTemp.createTempSync('rh_dlg_test_');
+        final storage = CaptureStorageService(baseDirectory: tempDir);
+        await storage.saveDefaultOutputDirectory(tempDir.path);
+        vm = TSharkCaptureViewModel(storageService: storage);
+        while (vm.isLoading) {
+          await Future.delayed(const Duration(milliseconds: 10));
+        }
+      });
+      addTearDown(() async {
+        vm.dispose();
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        try {
+          tempDir.deleteSync(recursive: true);
+        } catch (_) {}
+      });
+
+      await tester.pumpWidget(createTestApp(RemoteHostDialog(viewModel: vm)));
+      await tester.pump();
+
+      expect(
+        find.text('SSH Private Key File (Optional / Recommended)'),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Remember password on disk (chmod 0600)'),
+        findsOneWidget,
+      );
+      final checkbox = tester.widget<CheckboxListTile>(
+        find.byType(CheckboxListTile),
+      );
+      expect(checkbox.value, isFalse);
+    });
+
+    testWidgets('StorageAndRecoveryCard updates RecoveryPolicy dropdown when ViewModel changes', (tester) async {
+      setDesktopView(tester);
+      late Directory tempDir;
+      late TSharkCaptureViewModel vm;
+      await tester.runAsync(() async {
+        tempDir = Directory.systemTemp.createTempSync('sr_card_test_');
+        final storage = CaptureStorageService(baseDirectory: tempDir);
+        await storage.saveDefaultOutputDirectory(tempDir.path);
+        vm = TSharkCaptureViewModel(storageService: storage);
+        while (vm.isLoading) {
+          await Future.delayed(const Duration(milliseconds: 10));
+        }
+      });
+      addTearDown(() async {
+        vm.dispose();
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        try {
+          tempDir.deleteSync(recursive: true);
+        } catch (_) {}
+      });
+
+      await tester.pumpWidget(
+        createTestApp(
+          SingleChildScrollView(
+            child: ListenableBuilder(
+              listenable: vm,
+              builder: (_, _) => StorageAndRecoveryCard(
+                vm: vm,
+                onPickOutputFolder: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(vm.recoveryPolicy, equals(RecoveryPolicy.prompt));
+      var dropdown = tester.widget<DropdownButtonFormField<RecoveryPolicy>>(
+        find.byType(DropdownButtonFormField<RecoveryPolicy>),
+      );
+      expect(dropdown.initialValue, equals(RecoveryPolicy.prompt));
+
+      vm.setRecoveryPolicy(RecoveryPolicy.auto);
+      await tester.pump();
+
+      dropdown = tester.widget<DropdownButtonFormField<RecoveryPolicy>>(
+        find.byType(DropdownButtonFormField<RecoveryPolicy>),
+      );
+      expect(dropdown.initialValue, equals(RecoveryPolicy.auto));
+      expect(find.textContaining('Auto-Restart on Boot'), findsOneWidget);
     });
   });
 }

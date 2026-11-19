@@ -23,6 +23,8 @@ class RemoteHost {
     this.port = 22,
     required this.username,
     this.password = '',
+    this.privateKeyPath,
+    this.savePassword = false,
     this.customTSharkPath,
     this.defaultOutputDirectory = '/tmp/tshark_captures',
     this.useSudo = false,
@@ -37,6 +39,8 @@ class RemoteHost {
   final int port;
   final String username;
   final String password;
+  final String? privateKeyPath;
+  final bool savePassword;
   final String? customTSharkPath;
   final String defaultOutputDirectory;
   final bool useSudo;
@@ -53,6 +57,8 @@ class RemoteHost {
     int? port,
     String? username,
     String? password,
+    String? privateKeyPath,
+    bool? savePassword,
     String? customTSharkPath,
     String? defaultOutputDirectory,
     bool? useSudo,
@@ -67,6 +73,8 @@ class RemoteHost {
       port: port ?? this.port,
       username: username ?? this.username,
       password: password ?? this.password,
+      privateKeyPath: privateKeyPath ?? this.privateKeyPath,
+      savePassword: savePassword ?? this.savePassword,
       customTSharkPath: customTSharkPath ?? this.customTSharkPath,
       defaultOutputDirectory: defaultOutputDirectory ?? this.defaultOutputDirectory,
       useSudo: useSudo ?? this.useSudo,
@@ -82,7 +90,10 @@ class RemoteHost {
         'host': host,
         'port': port,
         'username': username,
-        'password': password,
+        'savePassword': savePassword,
+        if (savePassword) 'password': password,
+        if (privateKeyPath != null && privateKeyPath!.isNotEmpty)
+          'privateKeyPath': privateKeyPath,
         'customTSharkPath': customTSharkPath,
         'defaultOutputDirectory': defaultOutputDirectory,
         'useSudo': useSudo,
@@ -96,6 +107,8 @@ class RemoteHost {
       (e) => e.name == osName,
       orElse: () => RemoteOsType.auto,
     );
+    final rawPwd = json['password'] as String? ?? '';
+    final hasExplicitFlag = json.containsKey('savePassword');
 
     return RemoteHost(
       id: json['id'] as String,
@@ -103,7 +116,11 @@ class RemoteHost {
       host: json['host'] as String? ?? '',
       port: json['port'] as int? ?? 22,
       username: json['username'] as String? ?? '',
-      password: json['password'] as String? ?? '',
+      password: rawPwd,
+      privateKeyPath: json['privateKeyPath'] as String?,
+      savePassword: hasExplicitFlag
+          ? (json['savePassword'] as bool? ?? false)
+          : rawPwd.isNotEmpty,
       customTSharkPath: json['customTSharkPath'] as String?,
       defaultOutputDirectory:
           json['defaultOutputDirectory'] as String? ?? '/tmp/tshark_captures',

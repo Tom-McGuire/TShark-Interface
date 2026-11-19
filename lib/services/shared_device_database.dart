@@ -9,7 +9,11 @@ import 'package:sqlite3/sqlite3.dart';
 /// `~/.local/share/NetworkSuite/shared_devices.db`, while falling back safely
 /// to in-memory state in CI or isolated test environments.
 class SharedDeviceDatabase {
-  SharedDeviceDatabase({this.customPath}) {
+  SharedDeviceDatabase({
+    this.customPath,
+    this.pollInterval = const Duration(seconds: 1),
+    this.enablePolling,
+  }) {
     _changeController = StreamController<void>.broadcast(
       onListen: _ensurePolling,
       onCancel: _stopPolling,
@@ -21,11 +25,13 @@ class SharedDeviceDatabase {
       _instance ??= SharedDeviceDatabase();
 
   final String? customPath;
+  final Duration pollInterval;
+  final bool? enablePolling;
   late final StreamController<void> _changeController;
 
   String _inMemoryThemeMode = 'dark';
   Timer? _pollTimer;
-  int? _lastDataVersion;
+  String? _lastThemeStamp;
 
   /// Broadcast stream notified whenever settings change locally or on disk.
   Stream<void> get onDatabaseChanged => _changeController.stream;
@@ -72,33 +78,41 @@ class SharedDeviceDatabase {
 
   void _ensurePolling() {
     if (_pollTimer != null) return;
+    final shouldPoll =
+        enablePolling ?? !Platform.environment.containsKey('FLUTTER_TEST');
     final path = customPath ?? getDefaultDatabasePath();
-    if (path == ':memory:' ||
-        Platform.environment.containsKey('FLUTTER_TEST') ||
-        !File(path).existsSync()) {
+    if (!shouldPoll || path == ':memory:') {
       return;
     }
 
-    _lastDataVersion = _readDataVersion(path);
-    _pollTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      final v = _readDataVersion(path);
-      if (v != null && _lastDataVersion != null && v != _lastDataVersion) {
+    _lastThemeStamp = _readThemeStamp(path);
+    _pollTimer = Timer.periodic(pollInterval, (_) {
+      final stamp = _readThemeStamp(path);
+      if (stamp != null && stamp != _lastThemeStamp) {
+        _lastThemeStamp = stamp;
         notifyChanged();
-      }
-      if (v != null) {
-        _lastDataVersion = v;
+      } else if (stamp == null && _lastThemeStamp != null) {
+        _lastThemeStamp = null;
       }
     });
   }
 
-  int? _readDataVersion(String path) {
+  String? _readThemeStamp(String path) {
     if (path == ':memory:' || !File(path).existsSync()) return null;
     Database? db;
     try {
       db = sqlite3.open(path, mode: OpenMode.readOnly);
       db.execute('PRAGMA busy_timeout = 500;');
-      final rows = db.select('PRAGMA data_version;');
-      return rows.isEmpty ? null : rows.first.columnAt(0) as int;
+      final tableCheck = db.select(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'suite_settings' LIMIT 1;",
+      );
+      if (tableCheck.isEmpty) return null;
+
+      final rows = db.select(
+        "SELECT value, updated_at FROM suite_settings WHERE key = 'theme_mode' LIMIT 1;",
+      );
+      if (rows.isEmpty) return null;
+      return '${rows.first['value']}|${rows.first['updated_at']}';
     } catch (_) {
       return null;
     } finally {
@@ -145,13 +159,15 @@ class SharedDeviceDatabase {
 
     _inMemoryThemeMode = mode;
 
-    final targetPath = dbPath ?? customPath ?? getDefaultDatabasePath();
+    final defaultTarget = customPath ?? getDefaultDatabasePath();
+    final targetPath = dbPath ?? defaultTarget;
     final shouldPersist =
         dbPath != null ||
         customPath != null ||
         File(targetPath).existsSync() ||
         File(targetPath).parent.existsSync();
 
+    var wroteToDb = false;
     if (targetPath != ':memory:' && shouldPersist) {
       Database? db;
       try {
@@ -172,12 +188,16 @@ class SharedDeviceDatabase {
           "INSERT OR REPLACE INTO suite_settings (key, value, updated_at) VALUES ('theme_mode', ?, ?);",
           [mode, DateTime.now().toUtc().toIso8601String()],
         );
-        _lastDataVersion = _readDataVersion(targetPath);
+        wroteToDb = true;
       } catch (_) {
         // Keep in-memory state if DB path is read-only or unavailable.
       } finally {
         db?.close();
       }
+    }
+
+    if (wroteToDb && targetPath == defaultTarget) {
+      _lastThemeStamp = _readThemeStamp(targetPath);
     }
 
     notifyChanged();

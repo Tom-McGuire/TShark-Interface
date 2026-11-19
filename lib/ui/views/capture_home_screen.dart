@@ -1,24 +1,26 @@
-import 'package:material_ui/material_ui.dart';
-import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:provider/provider.dart';
 import 'package:tshark_interface/models/active_capture_session.dart';
-import 'package:tshark_interface/models/capture_config.dart';
-import 'package:tshark_interface/models/capture_interface.dart';
 import 'package:tshark_interface/models/capture_preset.dart';
-import 'package:tshark_interface/models/demo_packet.dart';
 import 'package:tshark_interface/models/remote_host.dart';
+import 'package:tshark_interface/services/system_service.dart';
 import 'package:tshark_interface/ui/theme/app_theme.dart';
 import 'package:tshark_interface/ui/widgets/guided_tour_overlay.dart';
 import 'package:tshark_interface/view_models/tshark_capture_view_model.dart';
+
 import 'dialogs/settings_dialog.dart';
 import 'widgets/active_capture_banner.dart';
-import 'widgets/capture_filter_input.dart';
 import 'widgets/capture_history_card.dart';
+import 'widgets/capture_mode_selector_card.dart';
 import 'widgets/capture_presets_bar.dart';
 import 'widgets/command_preview_card.dart';
 import 'widgets/interrupted_capture_banner.dart';
+import 'widgets/live_packet_stream_card.dart';
 import 'widgets/remote_hosts_tab.dart';
+import 'widgets/section_card.dart';
+import 'widgets/storage_and_recovery_card.dart';
+import 'widgets/top_control_bar.dart';
 
 class CaptureHomeScreen extends StatefulWidget {
   const CaptureHomeScreen({super.key});
@@ -28,10 +30,6 @@ class CaptureHomeScreen extends StatefulWidget {
 }
 
 class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
-  final _filePrefixController = TextEditingController();
-  final _packetLimitController = TextEditingController();
-  final _remoteOutputDirController = TextEditingController();
-
   // Spotlight Tour Keys & State
   bool _isTourActive = false;
   final GlobalKey _zone2TargetInterfaceKey = GlobalKey();
@@ -40,27 +38,11 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
   final GlobalKey _livePacketTableKey = GlobalKey();
   final GlobalKey _packetDissectionExportKey = GlobalKey();
 
-  @override
-  void initState() {
-    super.initState();
-    final vm = context.read<TSharkCaptureViewModel>();
-    _filePrefixController.text = vm.filePrefix;
-    _packetLimitController.text = vm.packetCountLimit.toString();
-    _remoteOutputDirController.text = vm.outputDirectory;
-  }
-
-  @override
-  void dispose() {
-    _filePrefixController.dispose();
-    _packetLimitController.dispose();
-    _remoteOutputDirController.dispose();
-    super.dispose();
-  }
-
   Future<void> _pickOutputFolder(TSharkCaptureViewModel vm) async {
     final selected = await FilePicker.getDirectoryPath(
       dialogTitle: 'Select Capture Storage Directory',
-      initialDirectory: vm.outputDirectory.isNotEmpty ? vm.outputDirectory : null,
+      initialDirectory:
+          vm.outputDirectory.isNotEmpty ? vm.outputDirectory : null,
     );
     if (selected != null && selected.isNotEmpty) {
       vm.setOutputDirectory(selected);
@@ -95,15 +77,24 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
             child: Column(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 14,
+                  ),
                   decoration: BoxDecoration(
                     color: AppTheme.surface,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(12),
+                    ),
                     border: Border(bottom: BorderSide(color: AppTheme.border)),
                   ),
                   child: Row(
                     children: [
-                      Icon(Icons.dns_outlined, color: AppTheme.accentCyan, size: 20),
+                      Icon(
+                        Icons.dns_outlined,
+                        color: AppTheme.accentCyan,
+                        size: 20,
+                      ),
                       const SizedBox(width: 10),
                       Text(
                         'Remote SSH Hosts Management',
@@ -115,7 +106,11 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                       ),
                       const Spacer(),
                       IconButton(
-                        icon: Icon(Icons.close, size: 18, color: AppTheme.textSecondary),
+                        icon: Icon(
+                          Icons.close,
+                          size: 18,
+                          color: AppTheme.textSecondary,
+                        ),
                         onPressed: () => Navigator.of(dialogCtx).pop(),
                       ),
                     ],
@@ -129,7 +124,6 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                       onSelectHostForCapture: (RemoteHost host) async {
                         Navigator.of(dialogCtx).pop();
                         await vm.selectTargetHost(host);
-                        _remoteOutputDirController.text = vm.outputDirectory;
                       },
                     ),
                   ),
@@ -144,7 +138,6 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
 
   void startDemoWalkthrough(TSharkCaptureViewModel vm) {
     vm.loadDemoWalkthroughData();
-    _packetLimitController.text = vm.packetCountLimit.toString();
     setState(() {
       _isTourActive = true;
     });
@@ -155,7 +148,6 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
       _isTourActive = false;
     });
     vm.clearCapture();
-    _packetLimitController.text = vm.packetCountLimit.toString();
   }
 
   List<GuidedTourStep> _buildTourSteps(TSharkCaptureViewModel vm) {
@@ -193,14 +185,13 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
         targetKey: _packetDissectionExportKey,
         title: 'Packet Dissection & PCAP Export',
         description:
-            'View detailed protocol frame layers for the selected packet, preview the exact TShark CLI invocation, and export captures to .pcapng or CSV.',
+            'View detailed protocol frame layers for the selected packet, preview the exact TShark CLI invocation, copy commands, or open saved captures in Wireshark.',
       ),
     ];
   }
 
   void _clearCaptureSettings(TSharkCaptureViewModel vm) {
     vm.clearCapture();
-    _packetLimitController.text = vm.packetCountLimit.toString();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Capture filters and limits cleared to defaults.'),
@@ -213,7 +204,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
     if (value == 'open_folder') {
       vm.openActiveDirectory();
     } else if (value == 'copy_cmd') {
-      Clipboard.setData(ClipboardData(text: vm.previewCommandLine));
+      SystemService.copyToClipboard(vm.previewCommandLine);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Command line copied to clipboard!'),
@@ -236,7 +227,17 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
         body: SafeArea(
           child: Column(
             children: [
-              _buildTopControlBar(context, vm),
+              TopControlBar(
+                vm: vm,
+                zone2TargetInterfaceKey: _zone2TargetInterfaceKey,
+                zone3StartStopKey: _zone3StartStopKey,
+                onOpenRemoteHosts: () => _openRemoteHostsDialog(context, vm),
+                onStartDemo: () => startDemoWalkthrough(vm),
+                onEndDemo: () => endDemoWalkthrough(vm),
+                onClearSettings: () => _clearCaptureSettings(vm),
+                onExportSelected: (val) => _handleExportSelection(val, vm),
+                onOpenSettings: () => _openSettings(context, vm),
+              ),
               Expanded(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(20),
@@ -246,394 +247,6 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildTopControlBar(BuildContext context, TSharkCaptureViewModel vm) {
-    return Container(
-      height: 52,
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border(bottom: BorderSide(color: AppTheme.border, width: 1)),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minWidth: constraints.maxWidth),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Left Cluster: Zone 1 (Branding), Zone 2 (Interface & Target), Zone 3 (Primary Actions)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // ==================== ZONE 1: BRANDING ====================
-                        SizedBox(
-                          width: 32,
-                          height: 32,
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(6),
-                            child: Image.asset(
-                              'assets/images/app_logo.png',
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'T-SHARK INTERFACE',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                letterSpacing: 0.8,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
-                            Text(
-                              'Headless Packet Capture Studio',
-                              style: TextStyle(fontSize: 10, color: AppTheme.textSecondary),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 16),
-
-                        // ==================== ZONE 2: INTERFACE & TARGET ====================
-                        Row(
-                          key: _zone2TargetInterfaceKey,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Target Machine Selector (Local vs Remote Host)
-                            Container(
-                              height: 32,
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              decoration: BoxDecoration(
-                                color: AppTheme.surfaceHigh,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: AppTheme.border),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<String?>(
-                                  key: ValueKey('top_target_${vm.selectedRemoteHost?.id ?? "local"}'),
-                                  value: vm.selectedRemoteHost?.id,
-                                  isDense: true,
-                                  dropdownColor: AppTheme.surfaceElevated,
-                                  style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
-                                  icon: Icon(Icons.arrow_drop_down, size: 16, color: AppTheme.textSecondary),
-                                  items: [
-                                    DropdownMenuItem<String?>(
-                                      value: null,
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(Icons.computer, size: 14, color: AppTheme.textPrimary),
-                                          const SizedBox(width: 6),
-                                          Text(
-                                            'Localhost (This PC)',
-                                            style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
-                                          ),
-                                          if (vm.localActiveSession != null) ...[
-                                            const SizedBox(width: 6),
-                                            _buildStatusDot(
-                                              color: AppTheme.accentEmerald,
-                                              label: 'Capturing',
-                                            ),
-                                          ],
-                                        ],
-                                      ),
-                                    ),
-                                    ...vm.remoteHosts.map((host) {
-                                      final rSession = vm.remoteSessions[host.id];
-                                      return DropdownMenuItem<String?>(
-                                        value: host.id,
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(Icons.dns_outlined, size: 14, color: AppTheme.accentCyan),
-                                            const SizedBox(width: 6),
-                                            Text(
-                                              'SSH: ${host.name}',
-                                              style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            if (rSession != null) ...[
-                                              const SizedBox(width: 6),
-                                              _buildStatusDot(
-                                                color: rSession.isUnreachable
-                                                    ? AppTheme.accentAmber
-                                                    : AppTheme.accentEmerald,
-                                                label: rSession.isUnreachable ? 'Unreachable' : 'Capturing',
-                                              ),
-                                            ],
-                                          ],
-                                        ),
-                                      );
-                                    }),
-                                  ],
-                                  onChanged: (String? hostId) async {
-                                    if (hostId == null) {
-                                      await vm.selectTargetHost(null);
-                                    } else {
-                                      final match = vm.remoteHosts.where((h) => h.id == hostId);
-                                      if (match.isNotEmpty) {
-                                        await vm.selectTargetHost(match.first);
-                                      }
-                                    }
-                                    _remoteOutputDirController.text = vm.outputDirectory;
-                                  },
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-
-                            // Network Interface Selector
-                            Container(
-                              height: 32,
-                              constraints: const BoxConstraints(minWidth: 140, maxWidth: 210),
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              decoration: BoxDecoration(
-                                color: AppTheme.surfaceHigh,
-                                borderRadius: BorderRadius.circular(6),
-                                border: Border.all(color: AppTheme.border),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButton<CaptureInterface>(
-                                  key: ValueKey(
-                                    'top_iface_${vm.selectedRemoteHost?.id ?? "local"}_${vm.selectedInterface?.name ?? "none"}',
-                                  ),
-                                  value: vm.interfaces.contains(vm.selectedInterface)
-                                      ? vm.selectedInterface
-                                      : null,
-                                  isDense: true,
-                                  isExpanded: true,
-                                  dropdownColor: AppTheme.surfaceElevated,
-                                  hint: Text(
-                                    'Select Interface',
-                                    style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                                  ),
-                                  style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
-                                  icon: Icon(Icons.arrow_drop_down, size: 16, color: AppTheme.textSecondary),
-                                  items: vm.interfaces.map((iface) {
-                                    return DropdownMenuItem<CaptureInterface>(
-                                      value: iface,
-                                      child: Text(
-                                        iface.displayName,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
-                                      ),
-                                    );
-                                  }).toList(),
-                                  onChanged: vm.isCapturing ? null : (val) => vm.setSelectedInterface(val),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 4),
-                            IconButton(
-                              icon: vm.isLoading
-                                  ? const SizedBox(
-                                      width: 14,
-                                      height: 14,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
-                                    )
-                                  : const Icon(Icons.refresh, size: 16),
-                              tooltip: vm.isRemoteTarget
-                                  ? 'Refresh Remote Network Interfaces over SSH'
-                                  : 'Refresh Interfaces',
-                              onPressed: vm.isCapturing ? null : () => vm.refreshInterfaces(),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 12),
-
-                        // ==================== ZONE 3: PRIMARY ACTIONS ====================
-                        KeyedSubtree(
-                          key: _zone3StartStopKey,
-                          child: FilledButton.icon(
-                            onPressed: (vm.isCapturing || !vm.hasTShark || vm.isLoading)
-                                ? (vm.isCapturing ? () => vm.stopCapture() : null)
-                                : () => vm.startCapture(),
-                            style: FilledButton.styleFrom(
-                              backgroundColor: vm.isCapturing
-                                  ? const Color(0xFFEF4444) // Active Red
-                                  : const Color(0xFF10B981), // Idle Emerald Green (from ARP Scout)
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                            ),
-                            icon: Icon(
-                              vm.isCapturing
-                                  ? Icons.stop
-                                  : (vm.isRemoteTarget ? Icons.cloud_upload_outlined : Icons.play_arrow),
-                              size: 17,
-                            ),
-                            label: Text(
-                              vm.isCapturing
-                                  ? 'Stop Capture'
-                                  : (vm.isRemoteTarget
-                                      ? 'Start Remote Capture'
-                                      : (vm.runDetached ? 'Start Headless' : 'Start Capture')),
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    // Right Cluster: Zone 4 (Ecosystem & Demo), Zone 5 (Clear & Export)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // ==================== ZONE 4: ECOSYSTEM & DEMO ====================
-                        // Remote Hosts Manager Button
-                        OutlinedButton.icon(
-                          onPressed: () => _openRemoteHostsDialog(context, vm),
-                          icon: const Icon(Icons.dns_outlined, size: 15),
-                          label: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Text('Remote Hosts', style: TextStyle(fontSize: 11)),
-                              if (vm.remoteSessions.isNotEmpty) ...[
-                                const SizedBox(width: 6),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                                  decoration: BoxDecoration(
-                                    color: vm.unreachableRemoteSessions.isNotEmpty
-                                        ? AppTheme.accentAmber
-                                        : AppTheme.accentEmerald,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    vm.remoteSessions.length.toString(),
-                                    style: const TextStyle(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.black,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ],
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-
-                        // Load Demo / Exit Demo Button
-                        OutlinedButton.icon(
-                          onPressed: vm.isCapturing
-                              ? null
-                              : () {
-                                  if (vm.isDemoMode) {
-                                    endDemoWalkthrough(vm);
-                                  } else {
-                                    startDemoWalkthrough(vm);
-                                  }
-                                },
-                          icon: Icon(
-                            vm.isDemoMode
-                                ? Icons.stop_circle_outlined
-                                : Icons.play_circle_outline,
-                            size: 15,
-                            color: vm.isDemoMode ? const Color(0xFFF59E0B) : null,
-                          ),
-                          label: Text(
-                            vm.isDemoMode ? 'Exit Demo' : 'Load Demo',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: vm.isDemoMode ? const Color(0xFFF59E0B) : null,
-                            ),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            side: vm.isDemoMode
-                                ? const BorderSide(color: Color(0xFFF59E0B))
-                                : null,
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-
-                        // ==================== ZONE 5: CLEAR & EXPORT ====================
-                        OutlinedButton.icon(
-                          onPressed: vm.isCapturing ? null : () => _clearCaptureSettings(vm),
-                          icon: const Icon(Icons.delete_sweep_outlined, size: 15),
-                          label: const Text('Clear', style: TextStyle(fontSize: 11)),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-
-                        // Export Menu
-                        PopupMenuButton<String>(
-                          tooltip: 'Export & Actions',
-                          onSelected: (val) => _handleExportSelection(val, vm),
-                          itemBuilder: (_) => [
-                            const PopupMenuItem<String>(
-                              value: 'open_folder',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.folder_open, size: 16),
-                                  SizedBox(width: 10),
-                                  Text('Open Storage Folder', style: TextStyle(fontSize: 12)),
-                                ],
-                              ),
-                            ),
-                            const PopupMenuItem<String>(
-                              value: 'copy_cmd',
-                              child: Row(
-                                children: [
-                                  Icon(Icons.terminal, size: 16),
-                                  SizedBox(width: 10),
-                                  Text('Copy Command Line', style: TextStyle(fontSize: 12)),
-                                ],
-                              ),
-                            ),
-                          ],
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: AppTheme.border),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.download, size: 15, color: AppTheme.textPrimary),
-                                const SizedBox(width: 6),
-                                Text('Export', style: TextStyle(fontSize: 11, color: AppTheme.textPrimary)),
-                                Icon(Icons.arrow_drop_down, size: 14, color: AppTheme.textPrimary),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-
-                        IconButton(
-                          icon: const Icon(Icons.settings_outlined, size: 18),
-                          tooltip: 'Engine & Output Settings',
-                          onPressed: () => _openSettings(context, vm),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          );
-        },
       ),
     );
   }
@@ -707,10 +320,7 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
           child: CapturePresetsBar(
             presets: vm.presets,
             activePresetId: vm.activePresetId,
-            onSelectPreset: (CapturePreset preset) {
-              vm.applyPreset(preset);
-              _packetLimitController.text = vm.packetCountLimit.toString();
-            },
+            onSelectPreset: (CapturePreset preset) => vm.applyPreset(preset),
           ),
         ),
         const SizedBox(height: 18),
@@ -880,639 +490,14 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // Card: Filter & Mode
-        _buildSectionCard(
-          title: 'Traffic Filter & Capture Mode',
-          icon: Icons.tune,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // BPF Filter
-              CaptureFilterInput(
-                filter: vm.captureFilter,
-                onChanged: (val) => vm.setCaptureFilter(val),
-              ),
-              const SizedBox(height: 16),
-
-              // Mode Tabs
-              Text(
-                'Capture Mode',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              SegmentedButton<CaptureMode>(
-                segments: const [
-                  ButtonSegment(
-                    value: CaptureMode.manual,
-                    label: Text('Manual', style: TextStyle(fontSize: 12)),
-                    icon: Icon(Icons.touch_app, size: 16),
-                  ),
-                  ButtonSegment(
-                    value: CaptureMode.timed,
-                    label: Text('Timed', style: TextStyle(fontSize: 12)),
-                    icon: Icon(Icons.timer_outlined, size: 16),
-                  ),
-                  ButtonSegment(
-                    value: CaptureMode.ringBuffer,
-                    label: Text('Ring Buffer', style: TextStyle(fontSize: 12)),
-                    icon: Icon(Icons.loop, size: 16),
-                  ),
-                  ButtonSegment(
-                    value: CaptureMode.packetCount,
-                    label: Text('Limit', style: TextStyle(fontSize: 12)),
-                    icon: Icon(Icons.format_list_numbered, size: 16),
-                  ),
-                ],
-                selected: {vm.mode},
-                onSelectionChanged: vm.isCapturing
-                    ? null
-                    : (selection) {
-                        vm.setMode(selection.first);
-                      },
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  foregroundColor: WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.disabled)) {
-                      return AppTheme.textMuted;
-                    }
-                    if (states.contains(WidgetState.selected)) {
-                      return AppTheme.textPrimary;
-                    }
-                    return AppTheme.textSecondary;
-                  }),
-                  backgroundColor: WidgetStateProperty.resolveWith((states) {
-                    if (states.contains(WidgetState.selected)) {
-                      return AppTheme.accentCyan.withValues(alpha: 0.2);
-                    }
-                    return AppTheme.surface;
-                  }),
-                  side: WidgetStateProperty.all(
-                    BorderSide(color: AppTheme.border),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-
-              // Mode-specific parameter controls
-              _buildModeParameters(vm),
-            ],
-          ),
-        ),
+        CaptureModeSelectorCard(vm: vm),
         const SizedBox(height: 16),
-
-        // Card: Advanced Tuning & Storage
-        _buildSectionCard(
-          title: 'Packet Slicing & Storage Destination',
-          icon: Icons.folder_zip_outlined,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Snaplen / Payload Slicing
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Packet Slice (Snaplen)',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Truncates payload to reduce PCAP file size.',
-                          style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                  DropdownButton<int>(
-                    value: vm.snaplen,
-                    dropdownColor: AppTheme.surfaceElevated,
-                    iconEnabledColor: AppTheme.textSecondary,
-                    iconDisabledColor: AppTheme.textMuted,
-                    style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                    items: const [
-                      DropdownMenuItem(
-                        value: 0,
-                        child: Text('Full Packets (Default)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 64,
-                        child: Text('64 Bytes (L2-L3 Only)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 96,
-                        child: Text('96 Bytes (Headers Only)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 128,
-                        child: Text('128 Bytes (Headers+TOS)'),
-                      ),
-                      DropdownMenuItem(
-                        value: 256,
-                        child: Text('256 Bytes'),
-                      ),
-                    ],
-                    onChanged: vm.isCapturing
-                        ? null
-                        : (val) => vm.setSnaplen(val ?? 0),
-                  ),
-                ],
-              ),
-              Divider(height: 24, color: AppTheme.borderColor),
-
-              // Promiscuous Mode
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(
-                  'Promiscuous Mode',
-                  style: TextStyle(fontSize: 12.5, color: AppTheme.textPrimary),
-                ),
-                subtitle: Text(
-                  'Captures all network packets seen on the segment, not just packets addressed to this host.',
-                  style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-                ),
-                value: vm.promiscuous,
-                onChanged: vm.isCapturing
-                    ? null
-                    : (val) => vm.setPromiscuous(val),
-                activeThumbColor: AppTheme.accentCyan,
-              ),
-              Divider(height: 24, color: AppTheme.borderColor),
-
-              // Output Storage Directory (Local Folder Picker vs Remote Path Input)
-              Text(
-                vm.isRemoteTarget
-                    ? 'Remote Destination Folder (on ${vm.selectedRemoteHost!.name})'
-                    : 'Destination Storage Folder',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 6),
-              if (vm.isRemoteTarget)
-                TextField(
-                  controller: _remoteOutputDirController,
-                  enabled: !vm.isCapturing,
-                  style: const TextStyle(fontSize: 12.5),
-                  decoration: const InputDecoration(
-                    hintText: '/tmp/tshark_captures',
-                    prefixIcon: Icon(Icons.folder_outlined, size: 18),
-                  ),
-                  onChanged: (val) => vm.setOutputDirectory(val),
-                )
-              else
-                Row(
-                  children: [
-                    Expanded(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surfaceHigh,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppTheme.borderColor),
-                        ),
-                        child: Text(
-                          vm.outputDirectory.isNotEmpty
-                              ? vm.outputDirectory
-                              : 'No directory chosen',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textPrimary,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: vm.isCapturing
-                          ? null
-                          : () => _pickOutputFolder(vm),
-                      icon: const Icon(Icons.folder_open, size: 16),
-                      label: const Text('Change'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.accentCyan,
-                        side: BorderSide(color: AppTheme.borderColor),
-                      ),
-                    ),
-                  ],
-                ),
-              const SizedBox(height: 12),
-
-              // File Prefix & Subfolder Checkbox
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _filePrefixController,
-                      style: const TextStyle(fontSize: 12),
-                      decoration: const InputDecoration(
-                        labelText: 'File Prefix',
-                        hintText: 'capture',
-                      ),
-                      onChanged: (val) => vm.setFilePrefix(val),
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      title: Text(
-                        'Timestamp Subfolder',
-                        style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                      ),
-                      value: vm.createSubfolder,
-                      onChanged: vm.isCapturing
-                          ? null
-                          : (val) => vm.setCreateSubfolder(val ?? true),
-                      activeColor: AppTheme.accentCyan,
-                    ),
-                  ),
-                ],
-              ),
-              Divider(height: 24, color: AppTheme.borderColor),
-
-              // Reboot & Crash Recovery Policy
-              Text(
-                'Reboot & Crash Recovery Policy',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                'Action to take if the system restarts or shuts down while capturing.',
-                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-              ),
-              const SizedBox(height: 8),
-              DropdownButtonFormField<RecoveryPolicy>(
-                initialValue: vm.recoveryPolicy,
-                isExpanded: true,
-                dropdownColor: AppTheme.surfaceElevated,
-                iconEnabledColor: AppTheme.textSecondary,
-                iconDisabledColor: AppTheme.textMuted,
-                style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.settings_backup_restore, size: 18),
-                ),
-                items: RecoveryPolicy.values.map((policy) {
-                  return DropdownMenuItem<RecoveryPolicy>(
-                    value: policy,
-                    child: Text(
-                      '${policy.label} — ${policy.description}',
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                    ),
-                  );
-                }).toList(),
-                onChanged: vm.isCapturing
-                    ? null
-                    : (val) {
-                        if (val != null) vm.setRecoveryPolicy(val);
-                      },
-              ),
-            ],
-          ),
+        StorageAndRecoveryCard(
+          vm: vm,
+          onPickOutputFolder: () => _pickOutputFolder(vm),
         ),
       ],
     );
-  }
-
-  Widget _buildStatusDot({required Color color, required String label}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.4)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 4),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildModeParameters(TSharkCaptureViewModel vm) {
-    switch (vm.mode) {
-      case CaptureMode.manual:
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceHigh,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.borderColor),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.info_outline, size: 16, color: AppTheme.accentCyan),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Continuous manual capture. Will record to PCAPNG until you click "Stop Capture".',
-                  style: TextStyle(fontSize: 11.5, color: AppTheme.textPrimary),
-                ),
-              ),
-            ],
-          ),
-        );
-
-      case CaptureMode.timed:
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceHigh,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.borderColor),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Auto-stop Duration',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Text(
-                          'Hours: ',
-                          style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                        ),
-                        DropdownButton<int>(
-                          value: vm.durationHours,
-                          dropdownColor: AppTheme.surfaceElevated,
-                          iconEnabledColor: AppTheme.textSecondary,
-                          iconDisabledColor: AppTheme.textMuted,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textPrimary,
-                          ),
-                          items: List.generate(
-                            25,
-                            (i) => DropdownMenuItem(value: i, child: Text('$i h')),
-                          ),
-                          onChanged: vm.isCapturing
-                              ? null
-                              : (val) => vm.setDurationHours(val ?? 0),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Text(
-                          'Minutes: ',
-                          style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                        ),
-                        DropdownButton<int>(
-                          value: vm.durationMinutes,
-                          dropdownColor: AppTheme.surfaceElevated,
-                          iconEnabledColor: AppTheme.textSecondary,
-                          iconDisabledColor: AppTheme.textMuted,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textPrimary,
-                          ),
-                          items: [1, 2, 5, 10, 15, 20, 30, 45, 60]
-                              .map(
-                                (m) => DropdownMenuItem(
-                                  value: m,
-                                  child: Text('$m min'),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: vm.isCapturing
-                              ? null
-                              : (val) => vm.setDurationMinutes(val ?? 10),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-
-      case CaptureMode.ringBuffer:
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceHigh,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.borderColor),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      vm.ringRotateBySize
-                          ? 'Rotate Every (MB)'
-                          : 'Rotate Every (Minutes)',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                  ),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'By Size',
-                        style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
-                      ),
-                      Switch(
-                        value: vm.ringRotateBySize,
-                        onChanged: vm.isCapturing
-                            ? null
-                            : (val) => vm.setRingRotateBySize(val),
-                        activeThumbColor: AppTheme.accentCyan,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(
-                    child: vm.ringRotateBySize
-                        ? DropdownButton<int>(
-                            value: vm.ringRotateFilesizeMb,
-                            isExpanded: true,
-                            dropdownColor: AppTheme.surfaceElevated,
-                            iconEnabledColor: AppTheme.textSecondary,
-                            iconDisabledColor: AppTheme.textMuted,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textPrimary,
-                            ),
-                            items: [10, 25, 50, 100, 250, 500, 1000]
-                                .map(
-                                  (mb) => DropdownMenuItem(
-                                    value: mb,
-                                    child: Text('$mb MB per file'),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: vm.isCapturing
-                                ? null
-                                : (val) =>
-                                    vm.setRingRotateFilesizeMb(val ?? 100),
-                          )
-                        : DropdownButton<int>(
-                            value: vm.ringRotateMinutes,
-                            isExpanded: true,
-                            dropdownColor: AppTheme.surfaceElevated,
-                            iconEnabledColor: AppTheme.textSecondary,
-                            iconDisabledColor: AppTheme.textMuted,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textPrimary,
-                            ),
-                            items: [1, 5, 10, 15, 30, 60]
-                                .map(
-                                  (m) => DropdownMenuItem(
-                                    value: m,
-                                    child: Text('$m minutes per file'),
-                                  ),
-                                )
-                                .toList(),
-                            onChanged: vm.isCapturing
-                                ? null
-                                : (val) => vm.setRingRotateMinutes(val ?? 10),
-                          ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Row(
-                      children: [
-                        Text(
-                          'Keep: ',
-                          style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
-                        ),
-                        DropdownButton<int>(
-                          value: vm.ringFilesCount,
-                          dropdownColor: AppTheme.surfaceElevated,
-                          iconEnabledColor: AppTheme.textSecondary,
-                          iconDisabledColor: AppTheme.textMuted,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppTheme.textPrimary,
-                          ),
-                          items: [2, 3, 5, 10, 20, 50]
-                              .map(
-                                (c) => DropdownMenuItem(
-                                  value: c,
-                                  child: Text('$c files max'),
-                                ),
-                              )
-                              .toList(),
-                          onChanged: vm.isCapturing
-                              ? null
-                              : (val) => vm.setRingFilesCount(val ?? 5),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-
-      case CaptureMode.packetCount:
-        return Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceHigh,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppTheme.borderColor),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Stop after Packet Count',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _packetLimitController,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(fontSize: 12),
-                      decoration: const InputDecoration(
-                        hintText: '10000',
-                        suffixText: 'packets',
-                      ),
-                      onChanged: (val) {
-                        final parsed = int.tryParse(val);
-                        if (parsed != null) vm.setPacketCountLimit(parsed);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        );
-    }
   }
 
   Widget _buildRightColumn(BuildContext context, TSharkCaptureViewModel vm) {
@@ -1523,14 +508,21 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
         CommandPreviewCard(
           commandLine: vm.previewCommandLine,
           runDetached: vm.isRemoteTarget ? true : vm.runDetached,
-          onDetachedChanged: (val) => vm.setRunDetached(val),
+          isRemoteTarget: vm.isRemoteTarget,
+          onDetachedChanged: (vm.isRemoteTarget || vm.isCapturing)
+              ? null
+              : (val) => vm.setRunDetached(val),
         ),
         const SizedBox(height: 16),
 
         // Live Packet Stream Table (Step 4 target)
         KeyedSubtree(
           key: _livePacketTableKey,
-          child: _buildLivePacketStreamCard(vm),
+          child: LivePacketStreamCard(
+            packets: vm.demoPackets,
+            selectedPacket: vm.selectedDemoPacket,
+            onSelectPacket: vm.selectDemoPacket,
+          ),
         ),
         const SizedBox(height: 16),
 
@@ -1541,10 +533,10 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (vm.selectedDemoPacket != null) ...[
-                _buildPacketDissectionCard(vm.selectedDemoPacket!),
+                PacketDissectionCard(packet: vm.selectedDemoPacket!),
                 const SizedBox(height: 16),
               ],
-              _buildSectionCard(
+              SectionCard(
                 title: 'Recent Capture Vault',
                 icon: Icons.history,
                 trailing: vm.history.isNotEmpty && !vm.isRemoteTarget
@@ -1562,239 +554,23 @@ class _CaptureHomeScreenState extends State<CaptureHomeScreen> {
                   onOpenFolder: (item) => vm.openHistoryItemFolder(item),
                   onOpenWireshark: (item) => vm.openHistoryItemInWireshark(item),
                   onRemove: (item) => vm.removeHistoryItem(item),
-                  onLoadDemo: vm.isCapturing ? null : () => startDemoWalkthrough(vm),
+                  onCopyPath: (item) {
+                    SystemService.copyToClipboard(item.filePath);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Copied remote path: ${item.filePath}'),
+                        duration: const Duration(seconds: 2),
+                      ),
+                    );
+                  },
+                  onLoadDemo:
+                      vm.isCapturing ? null : () => startDemoWalkthrough(vm),
                 ),
               ),
             ],
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildLivePacketStreamCard(TSharkCaptureViewModel vm) {
-    return _buildSectionCard(
-      title: 'Live Packet Stream',
-      icon: Icons.view_list_outlined,
-      trailing: vm.demoPackets.isNotEmpty
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppTheme.accentEmerald.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: AppTheme.accentEmerald.withValues(alpha: 0.4),
-                ),
-              ),
-              child: Text(
-                '${vm.demoPackets.length} Packets',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                  color: AppTheme.accentEmerald,
-                ),
-              ),
-            )
-          : null,
-      child: vm.demoPackets.isEmpty
-          ? Container(
-              padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 16),
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceHigh,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppTheme.borderColor),
-              ),
-              child: Center(
-                child: Text(
-                  'No live packets in stream. Start a capture or click "Load Demo" to preview decoded frames.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
-                ),
-              ),
-            )
-          : Container(
-              decoration: BoxDecoration(
-                color: AppTheme.surfaceHigh,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: AppTheme.borderColor),
-              ),
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: vm.demoPackets.length,
-                separatorBuilder: (_, _) =>
-                    Divider(height: 1, color: AppTheme.borderColor),
-                itemBuilder: (context, index) {
-                  final pkt = vm.demoPackets[index];
-                  final isSelected = vm.selectedDemoPacket?.number == pkt.number;
-                  return InkWell(
-                    onTap: () => vm.selectDemoPacket(pkt),
-                    child: Container(
-                      color: isSelected
-                          ? AppTheme.accentCyan.withValues(alpha: 0.15)
-                          : Colors.transparent,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 24,
-                            child: Text(
-                              '#${pkt.number}',
-                              style: TextStyle(
-                                fontFamily: 'Consolas',
-                                fontSize: 11,
-                                color: AppTheme.textSecondary,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppTheme.accentCyan.withValues(alpha: 0.18),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              pkt.protocol,
-                              style: TextStyle(
-                                fontFamily: 'Consolas',
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.accentCyan,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  '${pkt.source} → ${pkt.destination} (${pkt.length} B)',
-                                  style: TextStyle(
-                                    fontFamily: 'Consolas',
-                                    fontSize: 11.5,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppTheme.textPrimary,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  pkt.info,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: AppTheme.textSecondary,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-    );
-  }
-
-  Widget _buildPacketDissectionCard(DemoPacket packet) {
-    return _buildSectionCard(
-      title: 'Packet Dissection (Frame #${packet.number} • ${packet.protocol})',
-      icon: Icons.account_tree_outlined,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceHigh,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppTheme.borderColor),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: packet.dissectionLayers.map((layer) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.chevron_right,
-                    size: 14,
-                    color: AppTheme.accentCyan,
-                  ),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      layer,
-                      style: TextStyle(
-                        fontFamily: 'Consolas',
-                        fontSize: 11,
-                        color: AppTheme.textPrimary,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSectionCard({
-    required String title,
-    required IconData icon,
-    required Widget child,
-    Widget? trailing,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.borderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 16, color: AppTheme.accentCyan),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
-              ),
-              if (trailing != null) ...[
-                const SizedBox(width: 8),
-                trailing,
-              ],
-            ],
-          ),
-          const SizedBox(height: 14),
-          Material(
-            color: Colors.transparent,
-            child: child,
-          ),
-        ],
-      ),
     );
   }
 }

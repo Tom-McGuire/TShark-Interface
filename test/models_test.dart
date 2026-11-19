@@ -79,6 +79,40 @@ void main() {
         expect(decoded.fileSizeBytes, equals(0));
         expect(decoded.interfaceName, equals('Interface'));
         expect(decoded.filter, isEmpty);
+        expect(decoded.isRemote, isFalse);
+        expect(decoded.remoteHostId, isNull);
+      });
+
+      test('toJson and fromJson preserve isRemote and remoteHostId', () {
+        final remoteItem = CaptureHistoryItem(
+          filePath: '/var/captures/edge.pcapng',
+          fileName: 'edge.pcapng',
+          timestamp: DateTime(2026, 5, 1),
+          fileSizeBytes: 4096,
+          interfaceName: '[Edge] eth0',
+          filter: 'port 53',
+          isRemote: true,
+          remoteHostId: 'host_42',
+        );
+
+        final json = remoteItem.toJson();
+        expect(json['isRemote'], isTrue);
+        expect(json['remoteHostId'], equals('host_42'));
+
+        final decoded = CaptureHistoryItem.fromJson(json);
+        expect(decoded.isRemote, isTrue);
+        expect(decoded.remoteHostId, equals('host_42'));
+
+        final localItem = CaptureHistoryItem(
+          filePath: '/tmp/local.pcapng',
+          fileName: 'local.pcapng',
+          timestamp: DateTime(2026, 5, 1),
+          fileSizeBytes: 1024,
+          interfaceName: 'eth0',
+        );
+        expect(localItem.isRemote, isFalse);
+        expect(localItem.toJson()['isRemote'], isFalse);
+        expect(localItem.toJson().containsKey('remoteHostId'), isFalse);
       });
     });
 
@@ -246,11 +280,15 @@ void main() {
           port: 22,
           isReachable: true,
           useSudo: true,
+          privateKeyPath: '~/.ssh/id_ed25519',
+          savePassword: true,
         );
 
         expect(modified.port, equals(22));
         expect(modified.isReachable, isTrue);
         expect(modified.useSudo, isTrue);
+        expect(modified.privateKeyPath, equals('~/.ssh/id_ed25519'));
+        expect(modified.savePassword, isTrue);
         expect(modified.displayLabel, equals('Gateway Router (192.168.1.1)'));
       });
     });

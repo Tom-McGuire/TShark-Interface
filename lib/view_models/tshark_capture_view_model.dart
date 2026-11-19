@@ -10,10 +10,12 @@ import '../models/capture_preset.dart';
 import '../models/demo_packet.dart';
 import '../models/launch_adapter_config.dart';
 import '../models/remote_host.dart';
+import '../services/adapter_matcher.dart';
 import '../services/capture_storage_service.dart';
 import '../services/remote_ssh_service.dart';
 import '../services/system_service.dart';
 import '../services/tshark_service.dart';
+import '../utils/format_utils.dart';
 
 class TSharkCaptureViewModel extends ChangeNotifier {
   TSharkCaptureViewModel({
@@ -56,6 +58,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   // Remote Hosts & Target Selection
   List<RemoteHost> _remoteHosts = [];
   List<RemoteHost> get remoteHosts => _remoteHosts;
+  final Map<String, String> _sessionPasswords = {};
 
   RemoteHost? _selectedRemoteHost;
   RemoteHost? get selectedRemoteHost => _selectedRemoteHost;
@@ -146,10 +149,6 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   List<ActiveCaptureSession> get unreachableRemoteSessions =>
       _remoteSessions.values.where((s) => s.isUnreachable).toList();
 
-  int get totalActiveCapturesCount =>
-      (_localActiveSession != null ? 1 : 0) +
-      _remoteSessions.values.where((s) => !s.isUnreachable).length;
-
   /// Returns the active session for the currently selected Target Machine (Local or Remote).
   ActiveCaptureSession? get activeSession {
     if (isRemoteTarget) {
@@ -208,86 +207,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     );
     applyPreset(demoPreset);
 
-    _demoPackets = const [
-      DemoPacket(
-        number: 1,
-        timestamp: '0.000000',
-        source: '192.168.10.24',
-        destination: '1.1.1.1',
-        protocol: 'DNS',
-        length: 78,
-        info: 'Standard query 0x4a21 A api.internal.corp',
-        dissectionLayers: [
-          'Frame 1: 78 bytes on wire (624 bits), 78 bytes captured on interface eth0',
-          'Ethernet II, Src: Dell_81:a2:09 (00:14:22:81:a2:09), Dst: Cisco_f0:01:01 (00:1b:54:f0:01:01)',
-          'Internet Protocol Version 4, Src: 192.168.10.24, Dst: 1.1.1.1 (TTL: 64)',
-          'User Datagram Protocol, Src Port: 54112, Dst Port: 53 (Length: 44)',
-          'Domain Name System (query) • Transaction ID: 0x4a21 • Flags: 0x0100 Standard query',
-        ],
-      ),
-      DemoPacket(
-        number: 2,
-        timestamp: '0.011420',
-        source: '1.1.1.1',
-        destination: '192.168.10.24',
-        protocol: 'DNS',
-        length: 94,
-        info: 'Standard query response 0x4a21 A api.internal.corp A 10.20.4.15',
-        dissectionLayers: [
-          'Frame 2: 94 bytes on wire (752 bits), 94 bytes captured on interface eth0',
-          'Ethernet II, Src: Cisco_f0:01:01 (00:1b:54:f0:01:01), Dst: Dell_81:a2:09 (00:14:22:81:a2:09)',
-          'Internet Protocol Version 4, Src: 1.1.1.1, Dst: 192.168.10.24 (TTL: 57)',
-          'User Datagram Protocol, Src Port: 53, Dst Port: 54112 (Length: 60)',
-          'Domain Name System (response) • Answers: api.internal.corp: type A, class IN, addr 10.20.4.15',
-        ],
-      ),
-      DemoPacket(
-        number: 3,
-        timestamp: '0.012105',
-        source: '192.168.10.24',
-        destination: '10.20.4.15',
-        protocol: 'TCP',
-        length: 74,
-        info: '51822 → 443 [SYN] Seq=0 Win=64240 Len=0 MSS=1460 SACK_PERM TSval=298112',
-        dissectionLayers: [
-          'Frame 3: 74 bytes on wire (592 bits), 74 bytes captured on interface eth0',
-          'Ethernet II, Src: Dell_81:a2:09 (00:14:22:81:a2:09), Dst: Cisco_f0:01:01 (00:1b:54:f0:01:01)',
-          'Internet Protocol Version 4, Src: 192.168.10.24, Dst: 10.20.4.15 (DSCP: CS0, ECN: Not-ECT)',
-          'Transmission Control Protocol, Src Port: 51822, Dst Port: 443, Seq: 0, Len: 0 [SYN]',
-        ],
-      ),
-      DemoPacket(
-        number: 4,
-        timestamp: '0.024890',
-        source: '10.20.4.15',
-        destination: '192.168.10.24',
-        protocol: 'TLSv1.3',
-        length: 591,
-        info: 'Server Hello, Change Cipher Spec, Application Data',
-        dissectionLayers: [
-          'Frame 4: 591 bytes on wire (4728 bits), 591 bytes captured on interface eth0',
-          'Ethernet II, Src: Cisco_f0:01:01 (00:1b:54:f0:01:01), Dst: Dell_81:a2:09 (00:14:22:81:a2:09)',
-          'Internet Protocol Version 4, Src: 10.20.4.15, Dst: 192.168.10.24',
-          'Transmission Control Protocol, Src Port: 443, Dst Port: 51822, Seq: 1, Ack: 518, Len: 525',
-          'Transport Layer Security • TLSv1.3 Record Layer: Handshake Protocol: Server Hello (Cipher: TLS_AES_256_GCM_SHA384)',
-        ],
-      ),
-      DemoPacket(
-        number: 5,
-        timestamp: '0.089412',
-        source: '192.168.10.1',
-        destination: '224.0.0.18',
-        protocol: 'VRRP',
-        length: 60,
-        info: 'Announcement (v2) VRID=10 Prio=110 IP=192.168.10.254',
-        dissectionLayers: [
-          'Frame 5: 60 bytes on wire (480 bits), 60 bytes captured on interface eth0',
-          'Ethernet II, Src: Vrrp_00:01:0a (00:00:5e:00:01:0a), Dst: IPv4mcast_12 (01:00:5e:00:00:12)',
-          'Internet Protocol Version 4, Src: 192.168.10.1, Dst: 224.0.0.18 (TTL: 255)',
-          'Virtual Router Redundancy Protocol, Version 2, Packet Type 1 (Advertisement), VRID: 10, Priority: 110',
-        ],
-      ),
-    ];
+    _demoPackets = DemoPacket.samplePackets;
     _selectedDemoPacket = _demoPackets.first;
     notifyListeners();
   }
@@ -300,6 +220,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     _activePresetId = 'all_traffic';
     _mode = CaptureMode.manual;
     _packetCountLimit = 10000;
+    _filePrefix = 'capture';
     notifyListeners();
   }
 
@@ -337,7 +258,9 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       ];
       _history = await _storageService.loadHistory();
       _recoveryPolicy = await _storageService.loadDefaultRecoveryPolicy();
-      _remoteHosts = await _storageService.loadRemoteHosts();
+      _remoteHosts = _hydrateSessionPasswords(
+        await _storageService.loadRemoteHosts(),
+      );
 
       // Check if local session was already running in background
       await checkExistingSession();
@@ -359,113 +282,12 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     List<CaptureInterface> available,
     LaunchAdapterConfig config, {
     Map<String, List<String>>? osInterfaceIps,
-  }) {
-    if (available.isEmpty || !config.hasAdapterOverride) {
-      return null;
-    }
-
-    final targetIp = config.adapterIp?.trim();
-    if (targetIp != null && targetIp.isNotEmpty) {
-      final ipMatch = _matchByIp(available, targetIp, osInterfaceIps);
-      if (ipMatch != null) return ipMatch;
-    }
-
-    final targetName = config.adapterName?.trim();
-    if (targetName != null && targetName.isNotEmpty) {
-      return _matchByName(available, targetName);
-    }
-
-    return null;
-  }
-
-  static CaptureInterface? _matchByIp(
-    List<CaptureInterface> available,
-    String targetIp,
-    Map<String, List<String>>? osInterfaceIps,
-  ) {
-    for (final iface in available) {
-      if (iface.ipv4Addresses.any((ip) => ip.trim() == targetIp) ||
-          iface.name.trim() == targetIp) {
-        return iface;
-      }
-    }
-
-    final ipPattern = RegExp(
-      '(^|[^0-9])${RegExp.escape(targetIp)}([^0-9]|\$)',
-    );
-    for (final iface in available) {
-      final desc = iface.description;
-      if (desc != null && ipPattern.hasMatch(desc)) {
-        return iface;
-      }
-    }
-
-    if (osInterfaceIps == null || osInterfaceIps.isEmpty) {
-      return null;
-    }
-
-    final matchingOsNames = <String>{};
-    for (final entry in osInterfaceIps.entries) {
-      if (entry.value.any((ip) => ip.trim() == targetIp)) {
-        final osName = entry.key.trim().toLowerCase();
-        if (osName.isNotEmpty) {
-          matchingOsNames.add(osName);
-        }
-      }
-    }
-    if (matchingOsNames.isEmpty) return null;
-
-    // Exact case-insensitive match on interface name or friendly name first.
-    for (final osName in matchingOsNames) {
-      for (final iface in available) {
-        if (iface.name.trim().toLowerCase() == osName ||
-            iface.friendlyName?.trim().toLowerCase() == osName) {
-          return iface;
-        }
-      }
-    }
-
-    // Substring fallback when OS name differs slightly from tshark label.
-    for (final osName in matchingOsNames) {
-      for (final iface in available) {
-        final nameLower = iface.name.trim().toLowerCase();
-        final friendlyLower = iface.friendlyName?.trim().toLowerCase();
-        if (nameLower.contains(osName) ||
-            (friendlyLower != null && friendlyLower.contains(osName)) ||
-            (friendlyLower != null &&
-                friendlyLower.length >= 4 &&
-                osName.contains(friendlyLower))) {
-          return iface;
-        }
-      }
-    }
-
-    return null;
-  }
-
-  static CaptureInterface? _matchByName(
-    List<CaptureInterface> available,
-    String targetName,
-  ) {
-    final needle = targetName.toLowerCase();
-
-    for (final iface in available) {
-      if (iface.name.trim().toLowerCase() == needle ||
-          iface.friendlyName?.trim().toLowerCase() == needle) {
-        return iface;
-      }
-    }
-
-    for (final iface in available) {
-      if (iface.name.toLowerCase().contains(needle) ||
-          (iface.friendlyName?.toLowerCase().contains(needle) ?? false) ||
-          iface.displayName.toLowerCase().contains(needle)) {
-        return iface;
-      }
-    }
-
-    return null;
-  }
+  }) =>
+      AdapterMatcher.match(
+        available,
+        config,
+        osInterfaceIps: osInterfaceIps,
+      );
 
   Future<void> _selectPreferredLocalInterface() async {
     _selectedInterface = null;
@@ -530,8 +352,6 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     _selectedInterface = null;
     _interfaces = [];
 
-    await _storageService.saveLastSelectedTargetId(host?.id);
-
     if (host == null) {
       _outputDirectory = _localOutputDirectory;
       notifyListeners();
@@ -582,6 +402,17 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     }
   }
 
+  List<RemoteHost> _hydrateSessionPasswords(List<RemoteHost> hosts) {
+    return hosts.map((h) {
+      if (!h.savePassword &&
+          h.password.isEmpty &&
+          _sessionPasswords.containsKey(h.id)) {
+        return h.copyWith(password: _sessionPasswords[h.id]);
+      }
+      return h;
+    }).toList();
+  }
+
   // Remote Host CRUD & Testing
   Future<RemoteConnectionTestResult> testRemoteHostConnection(
     RemoteHost host,
@@ -590,13 +421,14 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     // If host already exists in saved list, update its cached reachability and OS
     final idx = _remoteHosts.indexWhere((h) => h.id == host.id);
     if (idx >= 0) {
-      final updated = _remoteHosts[idx].copyWith(
+      var updated = _remoteHosts[idx].copyWith(
         osType: _remoteHosts[idx].osType == RemoteOsType.auto
             ? result.detectedOs
             : _remoteHosts[idx].osType,
         detectedTSharkVersion: result.tsharkVersion,
         isReachable: result.success,
       );
+      updated = _hydrateSessionPasswords([updated]).first;
       _remoteHosts[idx] = updated;
       await _storageService.saveRemoteHost(updated);
       if (_selectedRemoteHost?.id == updated.id) {
@@ -608,8 +440,20 @@ class TSharkCaptureViewModel extends ChangeNotifier {
   }
 
   Future<void> saveRemoteHost(RemoteHost host) async {
+    if (!host.savePassword) {
+      if (host.password.isNotEmpty) {
+        _sessionPasswords[host.id] = host.password;
+      } else {
+        _sessionPasswords.remove(host.id);
+      }
+    } else {
+      _sessionPasswords.remove(host.id);
+    }
+
     await _storageService.saveRemoteHost(host);
-    _remoteHosts = await _storageService.loadRemoteHosts();
+    _remoteHosts = _hydrateSessionPasswords(
+      await _storageService.loadRemoteHosts(),
+    );
     if (_selectedRemoteHost?.id == host.id) {
       _selectedRemoteHost = host;
     }
@@ -620,10 +464,13 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     if (_selectedRemoteHost?.id == id) {
       await selectTargetHost(null);
     }
+    _sessionPasswords.remove(id);
     _remoteSessions.remove(id);
     await _storageService.removeRemoteSession(id);
     await _storageService.deleteRemoteHost(id);
-    _remoteHosts = await _storageService.loadRemoteHosts();
+    _remoteHosts = _hydrateSessionPasswords(
+      await _storageService.loadRemoteHosts(),
+    );
     notifyListeners();
   }
 
@@ -701,6 +548,8 @@ class TSharkCaptureViewModel extends ChangeNotifier {
             fileSizeBytes: check.sizeBytes,
             interfaceName: '[${host.name}] ${session.interfaceName}',
             filter: session.filter,
+            isRemote: true,
+            remoteHostId: host.id,
           );
           await _storageService.addHistoryItem(historyItem);
           _history = await _storageService.loadHistory();
@@ -788,7 +637,10 @@ class TSharkCaptureViewModel extends ChangeNotifier {
             recordedFilePath = latest;
           }
         }
-        final size = await _tsharkService.getCaptureSizeBytes(recordedFilePath);
+        final sizeTarget = session.mode == CaptureMode.ringBuffer
+            ? session.outputDirectory
+            : recordedFilePath;
+        final size = await _tsharkService.getCaptureSizeBytes(sizeTarget);
         if (size > 0 || File(recordedFilePath).existsSync()) {
           final historyItem = CaptureHistoryItem(
             filePath: recordedFilePath,
@@ -1108,7 +960,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
         config: config,
         detached: _runDetached,
         onProcessExit: (exitCode) {
-          if (exitCode != 0) {
+          if (!_isStopping && exitCode != 0) {
             final recent = _tsharkService.recentStderr;
             final errDetails = recent.isNotEmpty
                 ? ': ${recent.last}'
@@ -1211,12 +1063,12 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
     try {
       final session = _localActiveSession!;
-      await _tsharkService.stopCapture(session.pid);
+      final stopped = await _tsharkService.stopCapture(session.pid);
 
-      if (_activeProcess != null) {
+      if (!stopped && _activeProcess != null) {
         _activeProcess!.kill();
-        _activeProcess = null;
       }
+      _activeProcess = null;
 
       // In ring-buffer mode, resolve the actual created file
       String recordedFilePath = session.targetFilePath;
@@ -1229,7 +1081,10 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       }
 
       // Add to history if target file was generated
-      final size = await _tsharkService.getCaptureSizeBytes(recordedFilePath);
+      final sizeTarget = session.mode == CaptureMode.ringBuffer
+          ? session.outputDirectory
+          : recordedFilePath;
+      final size = await _tsharkService.getCaptureSizeBytes(sizeTarget);
       if (size > 0 || File(recordedFilePath).existsSync()) {
         final historyItem = CaptureHistoryItem(
           filePath: recordedFilePath,
@@ -1287,6 +1142,8 @@ class TSharkCaptureViewModel extends ChangeNotifier {
         fileSizeBytes: finalSize,
         interfaceName: '[${host.name}] ${session.interfaceName}',
         filter: session.filter,
+        isRemote: true,
+        remoteHostId: host.id,
       );
       await _storageService.addHistoryItem(historyItem);
       _history = await _storageService.loadHistory();
@@ -1331,17 +1188,9 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       // Every 3 seconds, poll local capture file size and verify process
       if (_localActiveSession != null && timer.tick % 3 == 0) {
         if (_localActiveSession!.mode == CaptureMode.ringBuffer) {
-          final latest = await _tsharkService.findLatestPcapFile(
+          _currentCaptureSizeBytes = await _tsharkService.getCaptureSizeBytes(
             _localActiveSession!.outputDirectory,
           );
-          if (latest != null) {
-            _currentCaptureSizeBytes =
-                await _tsharkService.getCaptureSizeBytes(latest);
-          } else {
-            _currentCaptureSizeBytes = await _tsharkService.getCaptureSizeBytes(
-              _localActiveSession!.targetFilePath,
-            );
-          }
         } else {
           _currentCaptureSizeBytes = await _tsharkService.getCaptureSizeBytes(
             _localActiveSession!.targetFilePath,
@@ -1382,7 +1231,7 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     if (isRemoteTarget) return;
     final path = _localActiveSession?.outputDirectory ?? _outputDirectory;
     if (path.isNotEmpty) {
-      await SystemService.openFolder(path);
+      await SystemService.openFolder(path, createIfMissing: true);
     }
   }
 
@@ -1401,23 +1250,9 @@ class TSharkCaptureViewModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  String formatDuration(Duration d) {
-    final hours = d.inHours.toString().padLeft(2, '0');
-    final minutes = (d.inMinutes % 60).toString().padLeft(2, '0');
-    final seconds = (d.inSeconds % 60).toString().padLeft(2, '0');
-    return '$hours:$minutes:$seconds';
-  }
+  String formatDuration(Duration d) => FormatUtils.formatDuration(d);
 
-  String formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) {
-      return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    }
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-  }
+  String formatBytes(int bytes) => FormatUtils.formatBytes(bytes);
 
   @override
   void dispose() {

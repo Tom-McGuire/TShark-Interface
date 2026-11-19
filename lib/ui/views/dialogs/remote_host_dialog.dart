@@ -1,4 +1,5 @@
 import 'package:material_ui/material_ui.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../../models/remote_host.dart';
 import '../../../services/remote_ssh_service.dart';
 import '../../../ui/theme/app_theme.dart';
@@ -24,10 +25,12 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
   late final TextEditingController _portController;
   late final TextEditingController _usernameController;
   late final TextEditingController _passwordController;
+  late final TextEditingController _privateKeyPathController;
   late final TextEditingController _outputDirController;
   late final TextEditingController _customTSharkController;
 
   RemoteOsType _osType = RemoteOsType.auto;
+  bool _savePassword = false;
   bool _useSudo = false;
   bool _obscurePassword = true;
   bool _isTesting = false;
@@ -43,6 +46,9 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
     _portController = TextEditingController(text: (h?.port ?? 22).toString());
     _usernameController = TextEditingController(text: h?.username ?? 'root');
     _passwordController = TextEditingController(text: h?.password ?? '');
+    _privateKeyPathController = TextEditingController(
+      text: h?.privateKeyPath ?? '',
+    );
     _outputDirController = TextEditingController(
       text: h?.defaultOutputDirectory ?? '/tmp/tshark_captures',
     );
@@ -50,6 +56,7 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
       text: h?.customTSharkPath ?? '',
     );
     _osType = h?.osType ?? RemoteOsType.auto;
+    _savePassword = h?.savePassword ?? false;
     _useSudo = h?.useSudo ?? false;
   }
 
@@ -60,9 +67,20 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
     _portController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
+    _privateKeyPathController.dispose();
     _outputDirController.dispose();
     _customTSharkController.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickPrivateKey() async {
+    final files = await FilePicker.pickFiles(
+      dialogTitle: 'Select SSH Private Key',
+    );
+    if (!mounted) return;
+    if (files.isNotEmpty && files.first.path != null) {
+      _privateKeyPathController.text = files.first.path!;
+    }
   }
 
   RemoteHost? _buildHost() {
@@ -85,6 +103,7 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
     }
 
     setState(() => _validationError = null);
+    final keyPath = _privateKeyPathController.text.trim();
     final customBin = _customTSharkController.text.trim();
     final outDir = _outputDirController.text.trim().isNotEmpty
         ? _outputDirController.text.trim()
@@ -100,6 +119,8 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
       port: port.clamp(1, 65535),
       username: user,
       password: _passwordController.text,
+      privateKeyPath: keyPath.isNotEmpty ? keyPath : null,
+      savePassword: _savePassword,
       customTSharkPath: customBin.isNotEmpty ? customBin : null,
       defaultOutputDirectory: outDir,
       useSudo: _useSudo,
@@ -257,7 +278,7 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
                       obscureText: _obscurePassword,
                       style: const TextStyle(fontSize: 13),
                       decoration: InputDecoration(
-                        labelText: 'SSH Password',
+                        labelText: 'SSH Password / Key Passphrase',
                         prefixIcon: const Icon(Icons.lock_outline, size: 18),
                         suffixIcon: IconButton(
                           icon: Icon(
@@ -270,6 +291,34 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
                               setState(() => _obscurePassword = !_obscurePassword),
                         ),
                       ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              // SSH Private Key File (Optional / Recommended)
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _privateKeyPathController,
+                      style: AppTheme.monoTextStyle(fontSize: 12.5),
+                      decoration: const InputDecoration(
+                        labelText: 'SSH Private Key File (Optional / Recommended)',
+                        hintText: '~/.ssh/id_ed25519 or ~/.ssh/id_rsa (optional)',
+                        prefixIcon: Icon(Icons.vpn_key_outlined, size: 18),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: _pickPrivateKey,
+                    icon: const Icon(Icons.file_open, size: 14),
+                    label: const Text('Browse'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.accentCyan,
+                      side: BorderSide(color: AppTheme.borderColor),
                     ),
                   ),
                 ],
@@ -340,6 +389,27 @@ class _RemoteHostDialogState extends State<RemoteHostDialog> {
                 ),
               ),
               const SizedBox(height: 8),
+
+              // Password persistence opt-in
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text(
+                  'Remember password on disk (chmod 0600)',
+                  style: TextStyle(fontSize: 12.5),
+                ),
+                subtitle: Text(
+                  'When unchecked, password is kept only in memory for this session.',
+                  style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                ),
+                value: _savePassword,
+                onChanged: (val) =>
+                    setState(() => _savePassword = val ?? false),
+                activeColor: AppTheme.accentCyan,
+                checkColor: AppTheme.isDark ? Colors.black : Colors.white,
+              ),
 
               // Use sudo toggle (Linux)
               SwitchListTile(

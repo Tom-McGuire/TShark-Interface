@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
@@ -16,8 +17,6 @@ class GuidedTourStep {
     this.onStepEnter,
   });
 }
-
-typedef FutureOr<T> = dynamic;
 
 class GuidedTourOverlay extends StatefulWidget {
   final List<GuidedTourStep> steps;
@@ -253,8 +252,7 @@ class _GuidedTourOverlayState extends State<GuidedTourOverlay> {
                       child: Text(
                         'DEMO WALKTHROUGH • STEP ${_currentIndex + 1} OF ${widget.steps.length}',
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontFamily: 'Consolas',
+                        style: AppTheme.monoTextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           color: AppTheme.accentCyan,

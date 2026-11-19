@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:intl/intl.dart';
 import 'package:tshark_interface/models/capture_history_item.dart';
+import 'package:tshark_interface/services/system_service.dart';
 import 'package:tshark_interface/ui/theme/app_theme.dart';
 
 class CaptureHistoryCard extends StatelessWidget {
@@ -10,6 +11,7 @@ class CaptureHistoryCard extends StatelessWidget {
     required this.onOpenFolder,
     required this.onOpenWireshark,
     required this.onRemove,
+    this.onCopyPath,
     this.onLoadDemo,
   });
 
@@ -17,6 +19,7 @@ class CaptureHistoryCard extends StatelessWidget {
   final ValueChanged<CaptureHistoryItem> onOpenFolder;
   final ValueChanged<CaptureHistoryItem> onOpenWireshark;
   final ValueChanged<CaptureHistoryItem> onRemove;
+  final ValueChanged<CaptureHistoryItem>? onCopyPath;
   final VoidCallback? onLoadDemo;
 
   @override
@@ -35,7 +38,7 @@ class CaptureHistoryCard extends StatelessWidget {
               Icon(Icons.history_toggle_off, size: 28, color: AppTheme.textMuted),
               const SizedBox(height: 8),
               Text(
-                'No captures recorded in this session yet',
+                'No captures recorded yet',
                 style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
               if (onLoadDemo != null) ...[
@@ -64,52 +67,87 @@ class CaptureHistoryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         border: Border.all(color: AppTheme.borderColor),
       ),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: history.length > 5 ? 5 : history.length,
-        separatorBuilder: (_, _) => Divider(height: 1, color: AppTheme.borderColor),
-        itemBuilder: (context, index) {
-          final item = history[index];
-          return ListTile(
-            dense: true,
-            visualDensity: VisualDensity.compact,
-            leading: Icon(Icons.insert_drive_file_outlined, color: AppTheme.accentCyan, size: 20),
-            title: Text(
-              item.fileName,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textPrimary,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxHeight: 280),
+        child: ListView.separated(
+          shrinkWrap: true,
+          itemCount: history.length,
+          separatorBuilder: (_, _) => Divider(height: 1, color: AppTheme.borderColor),
+          itemBuilder: (context, index) {
+            final item = history[index];
+            return ListTile(
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              leading: Icon(
+                item.isRemote
+                    ? Icons.cloud_done_outlined
+                    : Icons.insert_drive_file_outlined,
+                color: AppTheme.accentCyan,
+                size: 20,
               ),
-              overflow: TextOverflow.ellipsis,
-            ),
-            subtitle: Text(
-              '${dateFormat.format(item.timestamp)} • ${item.formattedSize} • ${item.interfaceName}',
-              style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
-            ),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  icon: Icon(Icons.folder_open, size: 16, color: AppTheme.textPrimary),
-                  tooltip: 'Open in Explorer',
-                  onPressed: () => onOpenFolder(item),
+              title: Text(
+                item.fileName,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
                 ),
-                IconButton(
-                  icon: Icon(Icons.launch, size: 16, color: AppTheme.accentCyan),
-                  tooltip: 'Open in Wireshark',
-                  onPressed: () => onOpenWireshark(item),
-                ),
-                IconButton(
-                  icon: Icon(Icons.close, size: 16, color: AppTheme.textMuted),
-                  tooltip: 'Remove from History',
-                  onPressed: () => onRemove(item),
-                ),
-              ],
-            ),
-          );
-        },
+                overflow: TextOverflow.ellipsis,
+              ),
+              subtitle: Text(
+                '${dateFormat.format(item.timestamp)} • ${item.formattedSize} • ${item.interfaceName}',
+                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
+                overflow: TextOverflow.ellipsis,
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (item.isRemote)
+                    IconButton(
+                      icon: Icon(
+                        Icons.content_copy,
+                        size: 16,
+                        color: AppTheme.accentCyan,
+                      ),
+                      tooltip: 'Copy Remote Path',
+                      onPressed: () {
+                        if (onCopyPath != null) {
+                          onCopyPath!(item);
+                        } else {
+                          SystemService.copyToClipboard(item.filePath);
+                        }
+                      },
+                    )
+                  else ...[
+                    IconButton(
+                      icon: Icon(
+                        Icons.folder_open,
+                        size: 16,
+                        color: AppTheme.textPrimary,
+                      ),
+                      tooltip: 'Open in Explorer',
+                      onPressed: () => onOpenFolder(item),
+                    ),
+                    IconButton(
+                      icon: Icon(
+                        Icons.launch,
+                        size: 16,
+                        color: AppTheme.accentCyan,
+                      ),
+                      tooltip: 'Open in Wireshark',
+                      onPressed: () => onOpenWireshark(item),
+                    ),
+                  ],
+                  IconButton(
+                    icon: Icon(Icons.close, size: 16, color: AppTheme.textMuted),
+                    tooltip: 'Remove from History',
+                    onPressed: () => onRemove(item),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
       ),
     );
   }

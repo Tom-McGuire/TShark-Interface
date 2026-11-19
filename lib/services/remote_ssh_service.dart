@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:dartssh2/dartssh2.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
@@ -69,6 +70,60 @@ class RemoteSshService {
     return "'${arg.replaceAll("'", "''")}'";
   }
 
+  /// Expands a leading `~/` or `~\` prefix using `HOME` or `USERPROFILE`.
+  @visibleForTesting
+  static String expandKeyPath(String rawPath) {
+    final trimmed = rawPath.trim();
+    if (trimmed.startsWith('~/') || trimmed.startsWith(r'~\')) {
+      final home =
+          Platform.environment['HOME'] ?? Platform.environment['USERPROFILE'] ?? '';
+      if (home.isNotEmpty) {
+        final cleanHome = (home.endsWith('/') || home.endsWith(r'\'))
+            ? home.substring(0, home.length - 1)
+            : home;
+        return '$cleanHome${trimmed.substring(1)}';
+      }
+    }
+    return trimmed;
+  }
+
+  /// Builds a PowerShell-safe remote execution command for Windows OpenSSH hosts.
+  @visibleForTesting
+  static String buildWindowsExecCommand(String tsharkBin, List<String> args) {
+    final psBin = escapePowerShellArg(tsharkBin);
+    final psArgs = args.map(escapePowerShellArg).join(' ');
+    final psScript = args.isEmpty ? '& $psBin' : '& $psBin $psArgs';
+    final escapedPs = psScript.replaceAll('"', r'\"');
+    return 'powershell -NoProfile -NonInteractive -Command "$escapedPs"';
+  }
+
+  /// Builds the PowerShell status and size-check command for a Windows remote session.
+  @visibleForTesting
+  static String buildWindowsStatusCommand(ActiveCaptureSession session) {
+    final pid = session.pid;
+    final String sizeCheck;
+    if (session.mode == CaptureMode.ringBuffer) {
+      final psDir = escapePowerShellArg(session.outputDirectory);
+      sizeCheck = "if (Test-Path $psDir) { "
+          "\$s = (Get-ChildItem $psDir -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum; "
+          "if (\$s) { Write-Output \$s } else { Write-Output 0 } "
+          "} else { Write-Output 0 }";
+    } else {
+      final psFile = escapePowerShellArg(session.targetFilePath);
+      sizeCheck = "if (Test-Path $psFile) { "
+          "\$f = Get-Item $psFile -ErrorAction SilentlyContinue; "
+          "if (\$f) { Write-Output \$f.Length } else { Write-Output 0 } "
+          "} else { Write-Output 0 }";
+    }
+
+    final psScript = "\$p = Get-Process -Id $pid -ErrorAction SilentlyContinue; "
+        "if (\$p) { Write-Output \$p.ProcessName }; "
+        "Write-Output '---SPLIT---'; "
+        "$sizeCheck";
+    final escapedScript = psScript.replaceAll('"', r'\"');
+    return 'powershell -NoProfile -NonInteractive -Command "$escapedScript"';
+  }
+
   /// Joins remote path segments using `/` for Linux or `\` for Windows.
   static String joinRemotePath(RemoteOsType os, String dir, String child) {
     final sep = os == RemoteOsType.windows ? r'\' : '/';
@@ -132,21 +187,47 @@ class RemoteSshService {
             : 'tshark');
     final sudoPrefix = (host.osType != RemoteOsType.windows && host.useSudo) ? 'sudo ' : '';
     final args = _tsharkService.buildArguments(config, fullRemoteOutputPath);
-    final formattedArgs = args.map((a) {
-      if (a.contains(' ') || a.contains('(') || a.contains(')') || a.contains(r'\')) {
-        return "'$a'";
-      }
-      return a;
-    }).join(' ');
+    final specialChars = RegExp(r'''[\s\\"'()|&;<>`$]''');
+    final quotedBin = specialChars.hasMatch(tsharkBin) ? escapePosixArg(tsharkBin) : tsharkBin;
 
+    final formattedArgs = <String>[];
+    for (var i = 0; i < args.length; i++) {
+      final a = args[i];
+      final isFilterOrOutput =
+          i > 0 && (args[i - 1] == '-f' || args[i - 1] == '-w');
+      if (isFilterOrOutput || specialChars.hasMatch(a)) {
+        formattedArgs.add(escapePosixArg(a));
+      } else {
+        formattedArgs.add(a);
+      }
+    }
+
+    final remoteCmd = '$sudoPrefix$quotedBin ${formattedArgs.join(' ')}';
+    final escapedRemoteCmd = remoteCmd
+        .replaceAll('"', r'\"')
+        .replaceAll(r'$', r'\$');
     final portFlag = host.port != 22 ? '-p ${host.port} ' : '';
-    return 'ssh $portFlag${host.username}@${host.host} "$sudoPrefix$tsharkBin $formattedArgs"';
+    return 'ssh $portFlag${host.username}@${host.host} "$escapedRemoteCmd"';
   }
 
   Future<SSHClient> _connect(
     RemoteHost host, {
     Duration timeout = const Duration(seconds: 6),
   }) async {
+    List<SSHKeyPair>? identities;
+    if (host.privateKeyPath != null && host.privateKeyPath!.trim().isNotEmpty) {
+      final keyPath = expandKeyPath(host.privateKeyPath!);
+      final keyFile = File(keyPath);
+      if (!keyFile.existsSync()) {
+        throw FileSystemException('SSH private key file not found', keyPath);
+      }
+      final pemText = await keyFile.readAsString();
+      identities = SSHKeyPair.fromPem(
+        pemText,
+        host.password.isNotEmpty ? host.password : null,
+      );
+    }
+
     final socket = await SSHSocket.connect(
       host.host,
       host.port,
@@ -155,7 +236,8 @@ class RemoteSshService {
     final client = SSHClient(
       socket,
       username: host.username,
-      onPasswordRequest: () => host.password,
+      identities: identities,
+      onPasswordRequest: host.password.isNotEmpty ? () => host.password : null,
     );
     await client.authenticated.timeout(timeout);
     return client;
@@ -239,7 +321,7 @@ class RemoteSshService {
       // Query version
       final verCmd = os == RemoteOsType.linux
           ? '${escapePosixArg(tsharkBin)} -v'
-          : '"$tsharkBin" -v';
+          : buildWindowsExecCommand(tsharkBin, ['-v']);
       final verRes = await _exec(client, verCmd);
       if (verRes.exitCode != 0) {
         return RemoteConnectionTestResult(
@@ -256,7 +338,7 @@ class RemoteSshService {
       final sudoPrefix = (os == RemoteOsType.linux && host.useSudo) ? 'sudo -n ' : '';
       final ifaceCmd = os == RemoteOsType.linux
           ? '$sudoPrefix${escapePosixArg(tsharkBin)} -D'
-          : '"$tsharkBin" -D';
+          : buildWindowsExecCommand(tsharkBin, ['-D']);
       final ifaceRes = await _exec(client, ifaceCmd);
       final interfaces = TSharkService.parseInterfacesOutput(ifaceRes.stdout);
 
@@ -301,7 +383,7 @@ class RemoteSshService {
 
       final cmd = os == RemoteOsType.linux
           ? '$sudoPrefix${escapePosixArg(tsharkBin)} -D'
-          : '"$tsharkBin" -D';
+          : buildWindowsExecCommand(tsharkBin, ['-D']);
       final res = await _exec(client, cmd);
       if (res.exitCode != 0 && res.stdout.isEmpty) {
         throw Exception(res.stderr.isNotEmpty ? res.stderr : 'tshark -D exited with ${res.exitCode}');
@@ -422,18 +504,9 @@ class RemoteSshService {
           sizeBytes: sizeBytes,
         );
       } else {
-        final psDir = escapePowerShellArg(session.outputDirectory);
-        final psScript = "\$p = Get-Process -Id $pid -ErrorAction SilentlyContinue; "
-            "if (\$p) { Write-Output \$p.ProcessName }; "
-            "Write-Output '---SPLIT---'; "
-            "if (Test-Path $psDir) { "
-            "\$s = (Get-ChildItem $psDir -File -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum; "
-            "if (\$s) { Write-Output \$s } else { Write-Output 0 } "
-            "} else { Write-Output 0 }";
-        final escapedScript = psScript.replaceAll('"', r'\"');
         final res = await _exec(
           client,
-          'powershell -NoProfile -NonInteractive -Command "$escapedScript"',
+          buildWindowsStatusCommand(session),
           timeout: const Duration(seconds: 8),
         );
         final parts = res.stdout.split('---SPLIT---');

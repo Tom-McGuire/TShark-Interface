@@ -14,10 +14,17 @@ class SystemService {
   }
 
   /// Opens a folder in the native file explorer.
-  static Future<bool> openFolder(String folderPath) async {
+  static Future<bool> openFolder(
+    String folderPath, {
+    bool createIfMissing = false,
+  }) async {
     try {
+      if (folderPath.isEmpty) return false;
       final dir = Directory(folderPath);
       if (!dir.existsSync()) {
+        if (!createIfMissing) {
+          return false;
+        }
         dir.createSync(recursive: true);
       }
       if (Platform.isWindows) {

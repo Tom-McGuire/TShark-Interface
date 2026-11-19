@@ -45,11 +45,26 @@ class CaptureStorageService {
     return File(p.join(dir.path, fileName));
   }
 
+  /// Restricts file permissions to owner-only (`0600`) on POSIX systems.
+  Future<void> _restrictFilePermissions(File target) async {
+    if (!Platform.isLinux && !Platform.isMacOS) return;
+    try {
+      await Process.run('chmod', ['600', target.path]);
+    } catch (_) {}
+  }
+
   /// Atomically writes JSON content via a temporary file to prevent corruption on crash or abrupt reboot.
-  Future<void> _safeWriteJson(File file, dynamic data) async {
+  Future<void> _safeWriteJson(
+    File file,
+    dynamic data, {
+    bool restrictPermissions = false,
+  }) async {
     final tempFile = File('${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp');
     final jsonStr = jsonEncode(data);
     await tempFile.writeAsString(jsonStr, flush: true);
+    if (restrictPermissions) {
+      await _restrictFilePermissions(tempFile);
+    }
     try {
       if (await file.exists()) {
         await file.delete();
@@ -58,6 +73,9 @@ class CaptureStorageService {
     } catch (e, st) {
       debugPrint('Atomic rename failed ($e), falling back to direct write\n$st');
       await file.writeAsString(jsonStr, flush: true);
+      if (restrictPermissions) {
+        await _restrictFilePermissions(file);
+      }
       if (await tempFile.exists()) {
         try {
           await tempFile.delete();
@@ -324,35 +342,6 @@ class CaptureStorageService {
     return [];
   }
 
-  Future<void> saveCustomPreset(CapturePreset preset) async {
-    try {
-      final current = await loadCustomPresets();
-      current.removeWhere((p) => p.id == preset.id);
-      current.add(preset);
-      final file = await _getFile('presets.json');
-      await _safeWriteJson(
-        file,
-        current.map((e) => e.toJson()).toList(),
-      );
-    } catch (e, st) {
-      debugPrint('Failed to save custom preset: $e\n$st');
-    }
-  }
-
-  Future<void> deleteCustomPreset(String id) async {
-    try {
-      final current = await loadCustomPresets();
-      current.removeWhere((p) => p.id == id);
-      final file = await _getFile('presets.json');
-      await _safeWriteJson(
-        file,
-        current.map((e) => e.toJson()).toList(),
-      );
-    } catch (e, st) {
-      debugPrint('Failed to delete custom preset: $e\n$st');
-    }
-  }
-
   // Remote Hosts
   Future<List<RemoteHost>> loadRemoteHosts() async {
     try {
@@ -385,6 +374,7 @@ class CaptureStorageService {
       await _safeWriteJson(
         file,
         current.map((e) => e.toJson()).toList(),
+        restrictPermissions: true,
       );
     } catch (e, st) {
       debugPrint('Failed to save remote host: $e\n$st');
@@ -399,6 +389,7 @@ class CaptureStorageService {
       await _safeWriteJson(
         file,
         current.map((e) => e.toJson()).toList(),
+        restrictPermissions: true,
       );
     } catch (e, st) {
       debugPrint('Failed to delete remote host: $e\n$st');
@@ -453,18 +444,5 @@ class CaptureStorageService {
     } catch (e, st) {
       debugPrint('Failed to remove remote session: $e\n$st');
     }
-  }
-
-  Future<void> saveLastSelectedTargetId(String? hostId) async {
-    return _serializePrefOp(() async {
-      final prefs = await _loadPrefs();
-      prefs['lastSelectedTargetId'] = hostId;
-      await _savePrefs(prefs);
-    });
-  }
-
-  Future<String?> loadLastSelectedTargetId() async {
-    final prefs = await _loadPrefs();
-    return prefs['lastSelectedTargetId'] as String?;
   }
 }

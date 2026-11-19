@@ -13,9 +13,6 @@ class LaunchAdapterConfig {
       (adapterIp != null && adapterIp!.trim().isNotEmpty) ||
       (adapterName != null && adapterName!.trim().isNotEmpty);
 
-  /// Alias for [hasAdapterOverride].
-  bool get hasOverride => hasAdapterOverride;
-
   /// Parses `--adapter-ip` and `--adapter-name` arguments in `--flag value` or
   /// `--flag=value` forms, trimming whitespace and treating empty values as `null`.
   factory LaunchAdapterConfig.fromArgs(List<String> args) {

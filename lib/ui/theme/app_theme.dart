@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:material_ui/material_ui.dart';
 
 class AppTheme {
@@ -5,6 +7,33 @@ class AppTheme {
 
   /// Global runtime toggle updated when `SharedDeviceDatabase` changes.
   static bool isDark = true;
+
+  // --- Typography Helpers ---
+  static const String monoFontFamily = 'Consolas';
+  static const List<String> monoFontFallback = [
+    'Menlo',
+    'Monaco',
+    'Liberation Mono',
+    'DejaVu Sans Mono',
+    'monospace',
+  ];
+
+  static TextStyle monoTextStyle({
+    double? fontSize,
+    FontWeight? fontWeight,
+    Color? color,
+    double? height,
+    double? letterSpacing,
+  }) =>
+      TextStyle(
+        fontFamily: monoFontFamily,
+        fontFamilyFallback: monoFontFallback,
+        fontSize: fontSize,
+        fontWeight: fontWeight,
+        color: color,
+        height: height,
+        letterSpacing: letterSpacing,
+      );
 
   // --- Surface & Structural Tokens ---
   static Color get scaffoldBg =>
@@ -45,12 +74,7 @@ class AppTheme {
   static Color get warning =>
       isDark ? const Color(0xFFF59E0B) : const Color(0xFFD97706);
 
-  static Color get info =>
-      isDark ? const Color(0xFF3B82F6) : const Color(0xFF2563EB);
-
   // --- Backwards-Compatible Aliases ---
-  static Color get darkBackground => scaffoldBg;
-  static Color get cardColor => surface;
   static Color get borderColor => border;
   static Color get accentCyan =>
       isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7);
@@ -59,8 +83,6 @@ class AppTheme {
   static Color get accentAmber => warning;
 
   // --- ThemeData Builders ---
-  static ThemeData get currentTheme => isDark ? darkTheme() : lightTheme();
-
   static ThemeData darkTheme() {
     final prev = isDark;
     isDark = true;
@@ -122,7 +144,7 @@ class AppTheme {
           borderSide: BorderSide(color: accent, width: 1.5),
         ),
       ),
-      fontFamily: 'Segoe UI',
+      fontFamily: Platform.isWindows ? 'Segoe UI' : null,
     );
   }
 }

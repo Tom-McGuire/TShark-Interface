@@ -3,6 +3,7 @@ import 'package:path/path.dart' as p;
 import 'package:tshark_interface/models/active_capture_session.dart';
 import 'package:tshark_interface/services/system_service.dart';
 import 'package:tshark_interface/ui/theme/app_theme.dart';
+import 'package:tshark_interface/utils/format_utils.dart';
 
 class ActiveCaptureBanner extends StatefulWidget {
   const ActiveCaptureBanner({
@@ -43,24 +44,6 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
   void dispose() {
     _pulseController.dispose();
     super.dispose();
-  }
-
-  String _formatDuration(Duration d) {
-    final hours = d.inHours.toString().padLeft(2, '0');
-    final minutes = (d.inMinutes % 60).toString().padLeft(2, '0');
-    final seconds = (d.inSeconds % 60).toString().padLeft(2, '0');
-    return '$hours:$minutes:$seconds';
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes < 1024) return '$bytes B';
-    if (bytes < 1024 * 1024) {
-      return '${(bytes / 1024).toStringAsFixed(1)} KB';
-    }
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
   @override
@@ -147,9 +130,8 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
                 Row(
                   children: [
                     Text(
-                      _formatDuration(widget.elapsed),
-                      style: TextStyle(
-                        fontFamily: 'Consolas',
+                      FormatUtils.formatDuration(widget.elapsed),
+                      style: AppTheme.monoTextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.textPrimary,
@@ -159,9 +141,8 @@ class _ActiveCaptureBannerState extends State<ActiveCaptureBanner>
                     Icon(Icons.storage, size: 14, color: AppTheme.textSecondary),
                     const SizedBox(width: 4),
                     Text(
-                      _formatBytes(widget.fileSizeBytes),
-                      style: TextStyle(
-                        fontFamily: 'Consolas',
+                      FormatUtils.formatBytes(widget.fileSizeBytes),
+                      style: AppTheme.monoTextStyle(
                         fontSize: 13,
                         color: AppTheme.textPrimary,
                       ),

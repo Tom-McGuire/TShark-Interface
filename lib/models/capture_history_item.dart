@@ -1,3 +1,5 @@
+import '../utils/format_utils.dart';
+
 class CaptureHistoryItem {
   const CaptureHistoryItem({
     required this.filePath,
@@ -6,6 +8,8 @@ class CaptureHistoryItem {
     required this.fileSizeBytes,
     required this.interfaceName,
     this.filter = '',
+    this.isRemote = false,
+    this.remoteHostId,
   });
 
   final String filePath;
@@ -14,17 +18,10 @@ class CaptureHistoryItem {
   final int fileSizeBytes;
   final String interfaceName;
   final String filter;
+  final bool isRemote;
+  final String? remoteHostId;
 
-  String get formattedSize {
-    if (fileSizeBytes < 1024) return '$fileSizeBytes B';
-    if (fileSizeBytes < 1024 * 1024) {
-      return '${(fileSizeBytes / 1024).toStringAsFixed(1)} KB';
-    }
-    if (fileSizeBytes < 1024 * 1024 * 1024) {
-      return '${(fileSizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-    }
-    return '${(fileSizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
-  }
+  String get formattedSize => FormatUtils.formatBytes(fileSizeBytes);
 
   Map<String, dynamic> toJson() => {
         'filePath': filePath,
@@ -33,6 +30,8 @@ class CaptureHistoryItem {
         'fileSizeBytes': fileSizeBytes,
         'interfaceName': interfaceName,
         'filter': filter,
+        'isRemote': isRemote,
+        if (remoteHostId != null) 'remoteHostId': remoteHostId,
       };
 
   factory CaptureHistoryItem.fromJson(Map<String, dynamic> json) {
@@ -43,6 +42,8 @@ class CaptureHistoryItem {
       fileSizeBytes: json['fileSizeBytes'] as int? ?? 0,
       interfaceName: json['interfaceName'] as String? ?? 'Interface',
       filter: json['filter'] as String? ?? '',
+      isRemote: json['isRemote'] as bool? ?? false,
+      remoteHostId: json['remoteHostId'] as String?,
     );
   }
 }

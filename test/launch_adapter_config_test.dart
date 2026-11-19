@@ -81,7 +81,6 @@ void main() {
       expect(config.adapterIp, equals('192.168.1.50'));
       expect(config.adapterName, equals('eth0'));
       expect(config.hasAdapterOverride, isTrue);
-      expect(config.hasOverride, isTrue);
     });
 
     test('parses equals-separated --adapter-ip= and --adapter-name= flags', () {
@@ -93,7 +92,6 @@ void main() {
       expect(config.adapterIp, equals('10.0.0.5'));
       expect(config.adapterName, equals('Ethernet'));
       expect(config.hasAdapterOverride, isTrue);
-      expect(config.hasOverride, isTrue);
     });
 
     test('trims whitespace and treats empty values as null', () {
@@ -114,7 +112,6 @@ void main() {
       expect(empty.adapterIp, isNull);
       expect(empty.adapterName, isNull);
       expect(empty.hasAdapterOverride, isFalse);
-      expect(empty.hasOverride, isFalse);
     });
 
     test('ignores missing or unknown flags and trailing flag without value', () {
@@ -126,7 +123,6 @@ void main() {
       expect(unknown.adapterIp, isNull);
       expect(unknown.adapterName, isNull);
       expect(unknown.hasAdapterOverride, isFalse);
-      expect(unknown.hasOverride, isFalse);
 
       final trailing = LaunchAdapterConfig.fromArgs(['--adapter-ip']);
       expect(trailing.adapterIp, isNull);
