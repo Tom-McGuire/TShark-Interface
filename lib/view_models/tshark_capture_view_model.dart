@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:network_suite_shared/network_suite_shared.dart'
+    show CapturePermissionResult, CapturePermissionState;
 import 'package:path/path.dart' as p;
 import '../models/active_capture_session.dart';
 import '../models/capture_config.dart';
@@ -45,6 +47,9 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
   String? _tsharkVersion;
   String? get tsharkVersion => _tsharkVersion;
+
+  CapturePermissionResult? _capturePermission;
+  CapturePermissionResult? get capturePermission => _capturePermission;
 
   bool _isLoading = false;
   bool get isLoading => _isLoading;
@@ -241,6 +246,11 @@ class TSharkCaptureViewModel extends ChangeNotifier {
       if (_tsharkPath != null) {
         _tsharkVersion = await _tsharkService.getVersion(_tsharkPath!);
         _interfaces = await _tsharkService.getInterfaces(_tsharkPath!);
+        _capturePermission = await _tsharkService.checkCapturePermissions(
+          binaryPath: _tsharkPath,
+        );
+      } else {
+        _capturePermission = await _tsharkService.checkCapturePermissions();
       }
 
       // Load default local output directory
@@ -604,11 +614,15 @@ class TSharkCaptureViewModel extends ChangeNotifier {
 
     if (_tsharkPath != null) {
       _tsharkVersion = await _tsharkService.getVersion(_tsharkPath!);
+      _capturePermission = await _tsharkService.checkCapturePermissions(
+        binaryPath: _tsharkPath,
+      );
       if (!isRemoteTarget) {
         await refreshInterfaces();
       }
     } else {
       _tsharkVersion = null;
+      _capturePermission = await _tsharkService.checkCapturePermissions();
       if (!isRemoteTarget) {
         _interfaces = [];
       }
@@ -962,11 +976,20 @@ class TSharkCaptureViewModel extends ChangeNotifier {
         onProcessExit: (exitCode) {
           if (!_isStopping && exitCode != 0) {
             final recent = _tsharkService.recentStderr;
-            final errDetails = recent.isNotEmpty
-                ? ': ${recent.last}'
+            final lastErr = recent.isNotEmpty ? recent.last : '';
+            final errDetails = lastErr.isNotEmpty
+                ? ': $lastErr'
                 : ' (exit code $exitCode)';
-            _errorMessage =
-                'TShark capture process exited unexpectedly$errDetails';
+            var message = 'TShark capture process exited unexpectedly$errDetails';
+            if (lastErr.isNotEmpty &&
+                TSharkService.isPermissionError(lastErr) &&
+                _capturePermission?.state == CapturePermissionState.denied) {
+              final remediation = _capturePermission?.remediationCommand;
+              if (remediation != null && remediation.isNotEmpty) {
+                message = '$message (Run: $remediation)';
+              }
+            }
+            _errorMessage = message;
             notifyListeners();
           }
         },

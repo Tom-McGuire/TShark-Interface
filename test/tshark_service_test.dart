@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:network_suite_shared/network_suite_shared.dart'
+    show CaptureBinaryLocator, CapturePermissionState;
 import 'package:tshark_interface/models/capture_config.dart';
 import 'package:tshark_interface/models/capture_interface.dart';
 import 'package:tshark_interface/models/capture_preset.dart';
@@ -271,6 +273,84 @@ Some random debug log from tshark
         expect(TSharkService.isValidTSharkExecutable(validFile.path), isTrue);
         expect(TSharkService.isValidTSharkExecutable(validWindowsFile.path), isTrue);
         expect(TSharkService.isValidTSharkExecutable(invalidFile.path), isFalse);
+      });
+    });
+
+    group('CaptureBinaryLocator integration', () {
+      test('delegates findTSharkPath, findDumpcapPath, getVersion, and checkCapturePermissions', () async {
+        final locator = CaptureBinaryLocator(
+          isWindows: false,
+          isLinux: true,
+          isMacOS: false,
+          fileExists: (path) =>
+              path == '/usr/bin/tshark' || path == '/usr/bin/dumpcap',
+          resolveSymlink: (path) => path,
+          processRunner: (exe, args) async {
+            if (exe == '/usr/bin/tshark' && args.contains('-v')) {
+              return ProcessResult(0, 0, 'TShark (Wireshark) 4.4.0\n', '');
+            }
+            if (exe == 'id' && args.contains('-u')) {
+              return ProcessResult(0, 0, '1000\n', '');
+            }
+            if (exe == 'getcap') {
+              return ProcessResult(
+                0,
+                0,
+                '/usr/bin/dumpcap cap_net_admin,cap_net_raw=eip\n',
+                '',
+              );
+            }
+            if (exe == 'stat') {
+              return ProcessResult(0, 0, 'root:755\n', '');
+            }
+            return ProcessResult(0, 1, '', '');
+          },
+        );
+
+        final svc = TSharkService(binaryLocator: locator);
+        final tshark = await svc.findTSharkPath();
+        final dumpcap = await svc.findDumpcapPath();
+        final version = await svc.getVersion(tshark!);
+        final perm = await svc.checkCapturePermissions(binaryPath: tshark);
+
+        expect(tshark, equals('/usr/bin/tshark'));
+        expect(dumpcap, equals('/usr/bin/dumpcap'));
+        expect(version, equals('TShark (Wireshark) 4.4.0'));
+        expect(perm.state, equals(CapturePermissionState.granted));
+        expect(perm.canCapture, isTrue);
+      });
+
+      test('surfaces denied setcap / Npcap permission diagnostics and isPermissionError', () async {
+        final locator = CaptureBinaryLocator(
+          isWindows: false,
+          isLinux: true,
+          isMacOS: false,
+          fileExists: (path) =>
+              path == '/usr/bin/tshark' || path == '/usr/bin/dumpcap',
+          resolveSymlink: (path) => path,
+          processRunner: (exe, args) async {
+            if (exe == 'id' && args.contains('-u')) {
+              return ProcessResult(0, 0, '1000\n', '');
+            }
+            if (exe == 'getcap') {
+              return ProcessResult(0, 0, '', '');
+            }
+            return ProcessResult(0, 1, '', '');
+          },
+        );
+
+        final svc = TSharkService(binaryLocator: locator);
+        final perm = await svc.checkCapturePermissions(
+          binaryPath: '/usr/bin/tshark',
+        );
+
+        expect(perm.state, equals(CapturePermissionState.denied));
+        expect(perm.canCapture, isFalse);
+        expect(perm.remediationCommand, isNotNull);
+        expect(
+          TSharkService.isPermissionError('dumpcap: You do not have permission to capture'),
+          isTrue,
+        );
       });
     });
   });

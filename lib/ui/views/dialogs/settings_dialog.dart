@@ -1,5 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:network_suite_shared/network_suite_shared.dart'
+    show CapturePermissionState;
 import 'package:tshark_interface/models/capture_config.dart';
 import 'package:tshark_interface/ui/theme/app_theme.dart';
 import 'package:tshark_interface/view_models/tshark_capture_view_model.dart';
@@ -258,6 +260,30 @@ class _SettingsDialogState extends State<SettingsDialog> {
                             widget.viewModel.tsharkVersion ?? 'Please ensure Wireshark/TShark is installed.',
                             style: TextStyle(fontSize: 11, color: AppTheme.textSecondary),
                           ),
+                          if (widget.viewModel.capturePermission != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              widget.viewModel.capturePermission!.summary,
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: widget.viewModel.capturePermission!.state ==
+                                        CapturePermissionState.denied
+                                    ? AppTheme.accentAmber
+                                    : AppTheme.textSecondary,
+                              ),
+                            ),
+                            if (widget.viewModel.capturePermission!.remediationCommand !=
+                                null) ...[
+                              const SizedBox(height: 2),
+                              SelectableText(
+                                widget.viewModel.capturePermission!.remediationCommand!,
+                                style: AppTheme.monoTextStyle(
+                                  fontSize: 10.5,
+                                  color: AppTheme.accentCyan,
+                                ),
+                              ),
+                            ],
+                          ],
                         ],
                       ),
                     ),

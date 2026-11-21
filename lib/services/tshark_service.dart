@@ -2,6 +2,11 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:network_suite_shared/network_suite_shared.dart'
+    show
+        CaptureBinaryLocator,
+        CapturePermissionResult,
+        CaptureTool;
 import 'package:path/path.dart' as p;
 import '../models/capture_config.dart';
 import '../models/capture_interface.dart';
@@ -25,9 +30,13 @@ class CaptureProcessResult {
 }
 
 class TSharkService {
-  TSharkService({this.customTSharkPath});
+  TSharkService({
+    this.customTSharkPath,
+    CaptureBinaryLocator? binaryLocator,
+  }) : _binaryLocator = binaryLocator ?? CaptureBinaryLocator();
 
   final String? customTSharkPath;
+  final CaptureBinaryLocator _binaryLocator;
   List<String> _recentStderr = [];
   List<String> get recentStderr => List.unmodifiable(_recentStderr);
 
@@ -36,9 +45,15 @@ class TSharkService {
     if (filePath.isEmpty) return false;
     final file = File(filePath);
     if (!file.existsSync()) return false;
-    final basename = p.basenameWithoutExtension(filePath).toLowerCase();
-    return basename == 'tshark';
+    return CaptureBinaryLocator.isExpectedExecutableName(
+      filePath,
+      CaptureTool.tshark,
+    );
   }
+
+  /// Returns `true` if [stderr] indicates an OS packet-capture permission failure.
+  static bool isPermissionError(String stderr) =>
+      CaptureBinaryLocator.isPermissionError(stderr);
 
   /// Sanitizes file prefixes to prevent path traversal, directory escape, and NTFS stream creation.
   static String sanitizeFilePrefix(String rawPrefix) {
@@ -52,78 +67,37 @@ class TSharkService {
     return clean;
   }
 
-  /// Attempts to locate the `tshark` executable on the host system.
-  Future<String?> findTSharkPath() async {
-    if (customTSharkPath != null && customTSharkPath!.isNotEmpty) {
-      if (isValidTSharkExecutable(customTSharkPath!)) {
-        return customTSharkPath;
-      }
-    }
-
-    if (Platform.isWindows) {
-      const candidates = [
-        r'C:\Program Files\Wireshark\tshark.exe',
-        r'C:\Program Files (x86)\Wireshark\tshark.exe',
-      ];
-      for (final path in candidates) {
-        if (isValidTSharkExecutable(path)) {
-          return path;
-        }
-      }
-
-      // Check via where tshark
-      try {
-        final res = await Process.run('where', ['tshark']);
-        if (res.exitCode == 0 && res.stdout.toString().trim().isNotEmpty) {
-          final firstLine = res.stdout.toString().trim().split(RegExp(r'[\r\n]+')).first;
-          if (isValidTSharkExecutable(firstLine)) {
-            return firstLine;
-          }
-        }
-      } catch (e) {
-        debugPrint('findTSharkPath where check error: $e');
-      }
-    } else {
-      const candidates = [
-        '/usr/bin/tshark',
-        '/usr/local/bin/tshark',
-        '/opt/homebrew/bin/tshark',
-      ];
-      for (final path in candidates) {
-        if (isValidTSharkExecutable(path)) {
-          return path;
-        }
-      }
-
-      try {
-        final res = await Process.run('which', ['tshark']);
-        if (res.exitCode == 0 && res.stdout.toString().trim().isNotEmpty) {
-          final found = res.stdout.toString().trim().split(RegExp(r'[\r\n]+')).first;
-          if (isValidTSharkExecutable(found)) {
-            return found;
-          }
-        }
-      } catch (e) {
-        debugPrint('findTSharkPath which check error: $e');
-      }
-    }
-
-    return null;
+  /// Attempts to locate the `tshark` executable on the host system via [CaptureBinaryLocator].
+  Future<String?> findTSharkPath() {
+    return _binaryLocator.findBinaryPath(
+      CaptureTool.tshark,
+      customPath: customTSharkPath,
+    );
   }
 
-  /// Queries tshark version string (e.g. "TShark (Wireshark) 4.2.4").
-  Future<String?> getVersion(String tsharkPath) async {
-    try {
-      if (!isValidTSharkExecutable(tsharkPath)) return null;
-      final res = await Process.run(tsharkPath, ['-v']);
-      if (res.exitCode == 0) {
-        final firstLine = res.stdout.toString().trim().split(RegExp(r'[\r\n]+')).first;
-        return firstLine;
-      }
-    } catch (e) {
-      debugPrint('getVersion error: $e');
-    }
-    return null;
+  /// Attempts to locate the `dumpcap` executable on the host system via [CaptureBinaryLocator].
+  Future<String?> findDumpcapPath({String? customPath}) {
+    return _binaryLocator.findBinaryPath(
+      CaptureTool.dumpcap,
+      customPath: customPath,
+    );
+  }
+
+  /// Checks OS packet capture privileges (`setcap` / `wireshark` group on Linux,
+  /// Npcap on Windows, ChmodBPF on macOS) via [CaptureBinaryLocator].
+  Future<CapturePermissionResult> checkCapturePermissions({
+    String? binaryPath,
+  }) {
+    return _binaryLocator.checkCapturePermissions(
+      CaptureTool.tshark,
+      binaryPath: binaryPath,
+      customPath: customTSharkPath,
+    );
+  }
+
+  /// Queries tshark version string (e.g. "TShark (Wireshark) 4.2.4") via [CaptureBinaryLocator].
+  Future<String?> getVersion(String tsharkPath) {
+    return _binaryLocator.getVersion(CaptureTool.tshark, tsharkPath);
   }
 
   /// Parses raw `tshark -D` output into a list of [CaptureInterface] objects.
